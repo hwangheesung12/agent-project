@@ -4,6 +4,10 @@ from urllib.parse import parse_qs, urlparse
 from pubmed import (
     PubMedClient,
     PubMedRecord,
+    count_journals,
+    count_records,
+    count_records_by_year,
+    count_top_journals,
     get_connection,
     list_journals,
     list_records,
@@ -86,6 +90,31 @@ class PubMedTests(unittest.TestCase):
 
         self.assertEqual(save_records(conn, [record]), (1, 0))
         self.assertEqual(save_records(conn, [record]), (0, 1))
+        self.assertEqual(count_journals(conn), 1)
+
+        second_record = PubMedRecord(
+            "2", "Title 2", "Abstract 2", "Journal", 2024, "Author 2"
+        )
+        third_record = PubMedRecord(
+            "3", "Title 3", "Abstract 3", "Another Journal", 2024, "Author 3"
+        )
+        self.assertEqual(save_records(conn, [second_record, third_record]), (2, 0))
+        self.assertEqual(count_journals(conn), 2)
+        self.assertEqual(count_records(conn), 3)
+        self.assertEqual(
+            count_records_by_year(conn),
+            [
+                {"pub_year": 2023, "paper_count": 1},
+                {"pub_year": 2024, "paper_count": 2},
+            ],
+        )
+        self.assertEqual(
+            count_top_journals(conn),
+            [
+                {"journal": "Journal", "paper_count": 2},
+                {"journal": "Another Journal", "paper_count": 1},
+            ],
+        )
         columns = {
             row[1] for row in conn.execute("PRAGMA table_info(pubmed_records)")
         }

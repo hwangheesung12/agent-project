@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import date
 import csv
 import io
@@ -10,6 +11,11 @@ from pubmed import (
     PubMedError,
     get_connection,
     list_journals,
+    count_journals,
+    count_records,
+    count_records_by_year,
+    count_top_journals,
+    get_connection,
     list_records,
     save_records,
 )
@@ -102,7 +108,7 @@ with st.sidebar:
     )
 
     collect_clicked = st.button(
-        "PubMed 수집", type="primary", use_container_width=True
+        "PubMed 수집", type="primary", width="stretch"
     )
 
 if collect_clicked:
@@ -128,6 +134,9 @@ if collect_clicked:
                 pmids = client.search(**options)
                 records, failed = client.fetch(pmids)
                 with get_connection(DB_PATH) as conn:
+                with closing(
+                    get_connection(os.getenv("PUBMED_DB_PATH", "pubmed.db"))
+                ) as conn:
                     saved, duplicates = save_records(conn, records)
 
             st.session_state["collection_stats"] = {
@@ -148,11 +157,19 @@ tab_overview, tab_papers, tab_chat = st.tabs(["개요", "논문 목록", "챗봇
 
 with tab_overview:
     stats = st.session_state["collection_stats"]
+    with closing(
+        get_connection(os.getenv("PUBMED_DB_PATH", "pubmed.db"))
+    ) as conn:
+        total_papers = count_records(conn)
+        total_journals = count_journals(conn)
+        papers_by_year = count_records_by_year(conn)
+        top_journals = count_top_journals(conn)
+
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-    metric_col1.metric("검색 PMID 수", stats["total"])
-    metric_col2.metric("신규 저장", stats["saved"])
+    metric_col1.metric("전체 논문 수", total_papers)
+    metric_col2.metric("신규 수집", stats["saved"])
     metric_col3.metric("중복 Skip", stats["duplicates"])
-    metric_col4.metric("수집 실패", stats["failed"])
+    metric_col4.metric("총 저널 수", total_journals)
 
     options = st.session_state.get("pubmed_search_options")
     if options:
@@ -163,6 +180,38 @@ with tab_overview:
         )
     else:
         st.info("사이드바에서 검색 조건을 입력하고 PubMed 수집을 실행하세요.")
+
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        st.subheader("연도별 논문 수")
+        if papers_by_year:
+            st.bar_chart(
+                papers_by_year,
+                x="pub_year",
+                y="paper_count",
+                x_label="출판 연도",
+                y_label="논문 수",
+                color="#287FB8",
+                height=420,
+            )
+        else:
+            st.info("출판 연도가 있는 논문 데이터가 없습니다.")
+
+    with chart_col2:
+        st.subheader("상위 저널")
+        if top_journals:
+            st.bar_chart(
+                top_journals,
+                x="paper_count",
+                y="journal",
+                x_label="논문 수",
+                y_label="저널",
+                color="#287FB8",
+                horizontal=True,
+                height=420,
+            )
+        else:
+            st.info("저널 정보가 있는 논문 데이터가 없습니다.")
 
 with tab_papers:
     st.subheader("수집 논문 목록")
