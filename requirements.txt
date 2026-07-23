@@ -143,3 +143,4 @@ yarl==1.24.2
 zipremove==0.8.2
 zipstream-ng==1.9.2
 zstandard==0.25.0
+Authlib>=1.3.2
