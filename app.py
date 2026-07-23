@@ -1,16 +1,10 @@
-from contextlib import closing
-from datetime import date
 import os
 
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
-from pubmed import PubMedClient, PubMedError, get_connection, save_records
-from views.chat import render_chat
-from views.overview import render_overview
-from views.papers import render_papers
-
-
-CURRENT_YEAR = date.today().year
+from views.dashboard import render_dashboard
+from views.landing import render_landing
 
 
 def load_env(path: str = ".env") -> None:
@@ -27,110 +21,52 @@ def load_env(path: str = ".env") -> None:
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
+def auth_is_configured() -> bool:
+    required_keys = {
+        "redirect_uri",
+        "cookie_secret",
+        "client_id",
+        "client_secret",
+        "server_metadata_url",
+    }
+    try:
+        auth_settings = st.secrets.get("auth", {})
+    except StreamlitSecretNotFoundError:
+        return False
+    if not required_keys.issubset(auth_settings):
+        return False
+
+    values = [str(auth_settings[key]).strip() for key in required_keys]
+    placeholder_markers = ("your_google_", "replace_with_")
+    return all(values) and not any(
+        value.startswith(placeholder_markers) for value in values
+    )
+
+
 load_env()
 DB_PATH = os.getenv("PUBMED_DB_PATH", "pubmed.db")
 
 st.set_page_config(
-    page_title="PubMed Insight Dashboard",
+    page_title="메디톡톡",
     page_icon="🧬",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-if "collection_stats" not in st.session_state:
-    st.session_state["collection_stats"] = {
-        "total": 0,
-        "saved": 0,
-        "duplicates": 0,
-        "failed": 0,
-    }
+auth_ready = auth_is_configured()
+is_logged_in = auth_ready and bool(getattr(st.user, "is_logged_in", False))
+
+if not is_logged_in:
+    render_landing(auth_ready=auth_ready)
+    st.stop()
 
 with st.sidebar:
-    st.header("PubMed 검색 설정")
+    user_name = st.user.get("name", "사용자")
+    user_email = st.user.get("email", "")
+    st.caption(f"{user_name}님")
+    if user_email:
+        st.caption(user_email)
+    st.button("로그아웃", on_click=st.logout, width="stretch")
+    st.divider()
 
-    keyword = st.text_input(
-        "검색어",
-        value="CRISPR cancer therapy",
-        placeholder="검색할 키워드를 입력하세요",
-    )
-
-    year_col1, year_col2 = st.columns(2)
-    with year_col1:
-        start_year = st.number_input(
-            "시작 연도",
-            min_value=1900,
-            max_value=CURRENT_YEAR,
-            value=2018,
-            step=1,
-        )
-    with year_col2:
-        end_year = st.number_input(
-            "종료 연도",
-            min_value=1900,
-            max_value=CURRENT_YEAR,
-            value=CURRENT_YEAR,
-            step=1,
-        )
-
-    max_papers = st.slider(
-        "최대 수집 논문 수",
-        min_value=1,
-        max_value=100,
-        value=20,
-        step=1,
-    )
-
-    collect_clicked = st.button("PubMed 수집", type="primary", width="stretch")
-
-if collect_clicked:
-    if not keyword.strip():
-        st.sidebar.error("검색어를 입력하세요.")
-    elif start_year > end_year:
-        st.sidebar.error("시작 연도는 종료 연도보다 클 수 없습니다.")
-    else:
-        options = {
-            "keyword": keyword.strip(),
-            "start_year": int(start_year),
-            "end_year": int(end_year),
-            "max_papers": int(max_papers),
-        }
-        st.session_state["pubmed_search_options"] = options
-
-        try:
-            with st.spinner("PubMed에서 논문을 수집하고 있습니다..."):
-                client = PubMedClient(
-                    api_key=os.getenv("NCBI_API_KEY", ""),
-                    email=os.getenv("NCBI_EMAIL", ""),
-                )
-                pmids = client.search(**options)
-                records, failed = client.fetch(pmids)
-                with closing(get_connection(DB_PATH)) as conn:
-                    saved, duplicates = save_records(conn, records)
-
-            st.session_state["collection_stats"] = {
-                "total": len(pmids),
-                "saved": saved,
-                "duplicates": duplicates,
-                "failed": failed,
-            }
-            st.sidebar.success(
-                f"수집 완료: 신규 {saved}건, 중복 {duplicates}건, 실패 {failed}건"
-            )
-        except (PubMedError, OSError) as exc:
-            st.sidebar.error(f"PubMed 수집 실패: {exc}")
-
-st.title("PubMed Insight Dashboard")
-
-tab_overview, tab_papers, tab_chat = st.tabs(["개요", "논문 목록", "챗봇"])
-
-with tab_overview:
-    render_overview(
-        db_path=DB_PATH,
-        stats=st.session_state["collection_stats"],
-        options=st.session_state.get("pubmed_search_options"),
-    )
-
-with tab_papers:
-    render_papers(db_path=DB_PATH, current_year=CURRENT_YEAR)
-
-with tab_chat:
-    render_chat()
+render_dashboard(db_path=DB_PATH)
