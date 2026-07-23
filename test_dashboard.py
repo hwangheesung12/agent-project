@@ -63,7 +63,20 @@ class DashboardTests(unittest.TestCase):
             )
             self.assertEqual(
                 [selectbox.label for selectbox in app.selectbox],
-                ["저널"],
+                ["저널", "모델"],
+            )
+            sidebar_markers = [
+                node.value
+                for node in app.sidebar
+                if node.type in {"header", "caption"}
+            ]
+            self.assertLess(
+                sidebar_markers.index("PubMed 검색 설정"),
+                sidebar_markers.index("OpenAI 설정"),
+            )
+            self.assertLess(
+                sidebar_markers.index("OpenAI 설정"),
+                sidebar_markers.index("사용자님"),
             )
             self.assertEqual(
                 [button.label for button in app.get("download_button")],
