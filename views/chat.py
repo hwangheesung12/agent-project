@@ -635,8 +635,6 @@ def render_chat(db_path: str) -> None:
         )
         if prompt:
             append_chat_message(db_path, user_id, "user", prompt)
-            with st.chat_message("user"):
-                st.markdown(prompt)
 
             try:
                 reply = generate_chatbot_reply(
@@ -648,8 +646,7 @@ def render_chat(db_path: str) -> None:
             except Exception:
                 reply = OPENAI_REQUEST_ERROR_MESSAGE
             append_chat_message(db_path, user_id, "assistant", reply)
-            with st.chat_message("assistant"):
-                st.markdown(reply)
+            st.rerun()
 
     with previous_chat_tab:
         render_previous_chat_history(db_path, user_id)
