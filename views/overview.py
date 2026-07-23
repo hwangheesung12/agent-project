@@ -26,7 +26,7 @@ def render_overview(
         top_journals = count_top_journals(conn)
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(
-        [1, 1, 1, 1],
+        4,
         gap="medium",
         vertical_alignment="top",
     )

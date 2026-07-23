@@ -109,6 +109,15 @@ class DashboardTests(unittest.TestCase):
                 item for item in app.text_input if item.label == "메시지"
             )
             self.assertTrue(message_input.disabled)
+            auto_scroll_blocks = app.get("html")
+            self.assertEqual(len(auto_scroll_blocks), 1)
+            self.assertIn(
+                ".st-key-chat_history_scroll",
+                auto_scroll_blocks[0].proto.body,
+            )
+            self.assertTrue(
+                auto_scroll_blocks[0].proto.unsafe_allow_javascript
+            )
 
             charts = app.get("vega_lite_chart")
             self.assertEqual(len(charts), 2)

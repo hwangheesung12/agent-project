@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import sqlite3
 import time
 from typing import Callable, Iterable
@@ -229,9 +230,18 @@ def list_records(
 
     normalized_search = search_term.strip()
     if normalized_search:
-        filters.append("(title LIKE ? OR abstract LIKE ?)")
-        search_pattern = f"%{normalized_search}%"
-        params.extend([search_pattern, search_pattern])
+        search_pattern = re.compile(
+            rf"(?<!\w){re.escape(normalized_search)}(?!\w)",
+            re.IGNORECASE,
+        )
+        conn.create_function(
+            "matches_search_term",
+            1,
+            lambda value: search_pattern.search(value or "") is not None,
+        )
+        filters.append(
+            "(matches_search_term(title) OR matches_search_term(abstract))"
+        )
 
     if start_year is not None:
         filters.append("pub_year >= ?")
@@ -257,6 +267,78 @@ def list_records(
         params,
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def search_records_for_chat(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    """Return the most relevant stored papers for a chatbot search."""
+    terms = list(
+        dict.fromkeys(
+            token.casefold()
+            for token in re.findall(r"[0-9A-Za-z가-힣]+", query)
+            if len(token) >= 2
+        )
+    )[:8]
+    if not terms:
+        return []
+
+    conn.row_factory = sqlite3.Row
+    match_clauses: list[str] = []
+    params: list[object] = []
+    for term in terms:
+        pattern = f"%{term}%"
+        match_clauses.append(
+            """
+            (
+                title LIKE ? COLLATE NOCASE
+                OR abstract LIKE ? COLLATE NOCASE
+                OR journal LIKE ? COLLATE NOCASE
+                OR authors LIKE ? COLLATE NOCASE
+                OR pmid = ?
+            )
+            """
+        )
+        params.extend([pattern, pattern, pattern, pattern, term])
+
+    rows = conn.execute(
+        f"""
+        SELECT pmid, title, abstract, journal, pub_year, authors
+        FROM pubmed_records
+        WHERE {" OR ".join(match_clauses)}
+        LIMIT 200
+        """,
+        params,
+    ).fetchall()
+    normalized_query = query.casefold().strip()
+
+    def relevance(row: sqlite3.Row) -> tuple[int, int, str]:
+        title = str(row["title"]).casefold()
+        abstract = str(row["abstract"]).casefold()
+        journal = str(row["journal"]).casefold()
+        authors = str(row["authors"]).casefold()
+        score = 0
+        if normalized_query and normalized_query in title:
+            score += 12
+        if normalized_query and normalized_query in abstract:
+            score += 5
+        for term in terms:
+            score += 5 if term in title else 0
+            score += 2 if term in abstract else 0
+            score += 2 if term in journal else 0
+            score += 1 if term in authors else 0
+            score += 10 if term == str(row["pmid"]).casefold() else 0
+        return (
+            score,
+            int(row["pub_year"]) if row["pub_year"] is not None else 0,
+            str(row["pmid"]),
+        )
+
+    ranked = sorted(rows, key=relevance, reverse=True)
+    safe_limit = max(1, min(int(limit), 10))
+    return [dict(row) for row in ranked[:safe_limit]]
 
 
 def list_journals(conn: sqlite3.Connection) -> list[str]:

@@ -168,6 +168,46 @@ class PubMedTests(unittest.TestCase):
         self.assertEqual(list_journals(conn), ["Journal A", "Journal B"])
         conn.close()
 
+    def test_list_records_matches_whole_terms_not_partial_words(self):
+        conn = get_connection(":memory:")
+        save_records(
+            conn,
+            [
+                PubMedRecord(
+                    "1",
+                    "RNA sequencing analysis",
+                    "",
+                    "Journal A",
+                    2024,
+                    "Author One",
+                ),
+                PubMedRecord(
+                    "2",
+                    "International research",
+                    "A multinational collaboration",
+                    "Journal B",
+                    2024,
+                    "Author Two",
+                ),
+                PubMedRecord(
+                    "3",
+                    "Single-cell study",
+                    "RNA-seq reveals cell states",
+                    "Journal C",
+                    2024,
+                    "Author Three",
+                ),
+            ],
+        )
+
+        records = list_records(conn, search_term="rna")
+
+        self.assertEqual(
+            [record["pmid"] for record in records],
+            ["3", "1"],
+        )
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
