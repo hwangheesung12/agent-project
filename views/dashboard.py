@@ -8,12 +8,14 @@ from pubmed import PubMedClient, PubMedError, get_connection, save_records
 from views.chat import render_chat
 from views.overview import render_overview
 from views.papers import render_papers
+from views.theme import apply_clay_theme
 
 
 CURRENT_YEAR = date.today().year
 
 
 def render_dashboard(db_path: str) -> None:
+    apply_clay_theme()
     if "collection_stats" not in st.session_state:
         st.session_state["collection_stats"] = {
             "total": 0,
@@ -99,7 +101,17 @@ def render_dashboard(db_path: str) -> None:
             except (PubMedError, OSError) as exc:
                 st.sidebar.error(f"PubMed 수집 실패: {exc}")
 
-    st.title("PubMed Insight Dashboard")
+    st.markdown(
+        '<span class="dashboard-kicker">MEDI TALK TALK · PUBMED INSIGHT</span>',
+        unsafe_allow_html=True,
+    )
+    st.title("메디톡톡 연구 대시보드")
+    st.markdown(
+        '<p class="dashboard-subtitle">'
+        "수집한 의학 논문의 흐름과 주요 저널을 한눈에 확인하세요."
+        "</p>",
+        unsafe_allow_html=True,
+    )
 
     tab_overview, tab_papers, tab_chat = st.tabs(["개요", "논문 목록", "챗봇"])
 
@@ -114,4 +126,4 @@ def render_dashboard(db_path: str) -> None:
         render_papers(db_path=db_path, current_year=CURRENT_YEAR)
 
     with tab_chat:
-        render_chat()
+        render_chat(db_path=db_path)

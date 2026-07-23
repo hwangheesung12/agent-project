@@ -96,7 +96,49 @@ def render_papers(db_path: str, current_year: int) -> None:
 
     if stored_records:
         st.caption(f"검색 결과 {len(stored_records)}건")
-        st.dataframe(stored_records, width="stretch", hide_index=True)
+        st.dataframe(
+            stored_records,
+            width="stretch",
+            height=min(720, 84 + (len(stored_records) * 64)),
+            hide_index=True,
+            column_order=[
+                "pmid",
+                "title",
+                "abstract",
+                "journal",
+                "pub_year",
+                "authors",
+            ],
+            column_config={
+                "pmid": st.column_config.TextColumn(
+                    "PMID",
+                    width="small",
+                    help="PubMed 고유 논문 ID",
+                ),
+                "title": st.column_config.TextColumn(
+                    "논문 제목",
+                    width="large",
+                ),
+                "abstract": st.column_config.TextColumn(
+                    "Abstract",
+                    width="large",
+                ),
+                "journal": st.column_config.TextColumn(
+                    "저널",
+                    width="medium",
+                ),
+                "pub_year": st.column_config.NumberColumn(
+                    "출판 연도",
+                    width="small",
+                    format="%d",
+                ),
+                "authors": st.column_config.TextColumn(
+                    "저자",
+                    width="medium",
+                ),
+            },
+            row_height=56,
+        )
         st.download_button(
             "CSV 다운로드",
             data=records_to_csv(stored_records),

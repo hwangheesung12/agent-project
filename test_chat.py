@@ -1,48 +1,102 @@
 from pathlib import Path
+import tempfile
+import unittest
 
 from views.chat import (
     MEDICAL_REFUSAL_MESSAGE,
+    build_chat_user_id,
+    default_chat_messages,
     generate_chatbot_reply,
     load_chat_memory,
     medical_advice_middleware,
+    save_chat_memory,
     should_block_medical_advice,
 )
 
 
-def test_blocks_personal_medical_advice_question():
-    question = "\uc74c\uc8fc \ud6c4 \ud0c0\uc774\ub808\ub180 \uba39\uc5b4\ub3c4 \ub418\ub098\uc694?"
+class ChatTests(unittest.TestCase):
+    def test_blocks_personal_medical_advice_question(self):
+        question = "음주 후 타이레놀 먹어도 되나요?"
 
-    assert should_block_medical_advice(question)
-    assert medical_advice_middleware(question) == MEDICAL_REFUSAL_MESSAGE
-    assert generate_chatbot_reply(question) == MEDICAL_REFUSAL_MESSAGE
+        self.assertTrue(should_block_medical_advice(question))
+        self.assertEqual(
+            medical_advice_middleware(question),
+            MEDICAL_REFUSAL_MESSAGE,
+        )
+        self.assertEqual(
+            generate_chatbot_reply(question),
+            MEDICAL_REFUSAL_MESSAGE,
+        )
+
+    def test_blocks_short_slang_medical_advice_question(self):
+        question = "오늘 술 먹었는데 타이레놀 ㄱㅊ?"
+
+        self.assertTrue(should_block_medical_advice(question))
+        self.assertEqual(
+            medical_advice_middleware(question),
+            MEDICAL_REFUSAL_MESSAGE,
+        )
+        self.assertEqual(
+            generate_chatbot_reply(question),
+            MEDICAL_REFUSAL_MESSAGE,
+        )
+
+    def test_allows_pubmed_metadata_question(self):
+        question = "연도별 논문 추세는 어디서 확인하나요?"
+
+        self.assertFalse(should_block_medical_advice(question))
+        self.assertIn("연도별 논문 수", generate_chatbot_reply(question))
+
+    def test_google_account_identifier_prefers_subject(self):
+        self.assertEqual(
+            build_chat_user_id(
+                {
+                    "sub": "google-user-123",
+                    "email": "USER@example.com",
+                }
+            ),
+            "google-sub:google-user-123",
+        )
+        self.assertEqual(
+            build_chat_user_id({"email": "USER@example.com"}),
+            "google-email:user@example.com",
+        )
+
+    def test_chat_memory_persists_and_is_separated_by_google_account(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "chat.db")
+            user_a = "google-sub:user-a"
+            user_b = "google-sub:user-b"
+            messages_a = [
+                {"role": "user", "content": "A 사용자의 질문"},
+                {"role": "assistant", "content": "A 사용자에게 답변"},
+            ]
+            messages_b = [
+                {"role": "user", "content": "B 사용자의 질문"},
+                {"role": "assistant", "content": "B 사용자에게 답변"},
+            ]
+
+            save_chat_memory(db_path, user_a, messages_a, "Alice")
+            save_chat_memory(db_path, user_b, messages_b, "Bob")
+
+            loaded_a = load_chat_memory(db_path, user_a)
+            loaded_b = load_chat_memory(db_path, user_b)
+
+            self.assertEqual(loaded_a["messages"], messages_a)
+            self.assertEqual(loaded_a["user_name"], "Alice")
+            self.assertEqual(loaded_b["messages"], messages_b)
+            self.assertEqual(loaded_b["user_name"], "Bob")
+
+            save_chat_memory(
+                db_path,
+                user_a,
+                default_chat_messages(),
+            )
+            self.assertEqual(
+                load_chat_memory(db_path, user_b)["messages"],
+                messages_b,
+            )
 
 
-def test_blocks_short_slang_medical_advice_question():
-    question = "\uc624\ub298 \uc220 \uba39\uc5c8\ub294\ub370 \ud0c0\uc774\ub808\ub180 \u3131\u314a?"
-
-    assert should_block_medical_advice(question)
-    assert medical_advice_middleware(question) == MEDICAL_REFUSAL_MESSAGE
-    assert generate_chatbot_reply(question) == MEDICAL_REFUSAL_MESSAGE
-
-
-def test_allows_pubmed_metadata_question():
-    question = "\uc5f0\ub3c4\ubcc4 \ub17c\ubb38 \ucd94\uc138\ub294 \uc5b4\ub514\uc11c \ud655\uc778\ud558\ub098\uc694?"
-
-    assert not should_block_medical_advice(question)
-    assert "\uc5f0\ub3c4\ubcc4 \ub17c\ubb38 \uc218" in generate_chatbot_reply(question)
-
-
-def test_load_chat_memory_restores_saved_messages(tmp_path: Path):
-    memory_path = tmp_path / "chat_memory.json"
-    memory_path.write_text(
-        (
-            '{"messages":[{"role":"user","content":"hello"},'
-            '{"role":"assistant","content":"hi"}],"user_name":"Jay"}'
-        ),
-        encoding="utf-8",
-    )
-
-    loaded_memory = load_chat_memory(memory_path)
-
-    assert loaded_memory["messages"][-1] == {"role": "assistant", "content": "hi"}
-    assert loaded_memory["user_name"] == "Jay"
+if __name__ == "__main__":
+    unittest.main()
