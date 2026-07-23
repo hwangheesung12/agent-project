@@ -216,13 +216,56 @@ def save_records(
     return saved, duplicates
 
 
-def list_records(conn: sqlite3.Connection) -> list[dict[str, object]]:
+def list_records(
+    conn: sqlite3.Connection,
+    search_term: str = "",
+    start_year: int | None = None,
+    end_year: int | None = None,
+    journal: str = "",
+) -> list[dict[str, object]]:
     conn.row_factory = sqlite3.Row
+    filters: list[str] = []
+    params: list[object] = []
+
+    normalized_search = search_term.strip()
+    if normalized_search:
+        filters.append("(title LIKE ? OR abstract LIKE ?)")
+        search_pattern = f"%{normalized_search}%"
+        params.extend([search_pattern, search_pattern])
+
+    if start_year is not None:
+        filters.append("pub_year >= ?")
+        params.append(start_year)
+
+    if end_year is not None:
+        filters.append("pub_year <= ?")
+        params.append(end_year)
+
+    normalized_journal = journal.strip()
+    if normalized_journal:
+        filters.append("journal = ?")
+        params.append(normalized_journal)
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
     rows = conn.execute(
-        """
+        f"""
         SELECT pmid, title, abstract, journal, pub_year, authors
         FROM pubmed_records
+        {where_clause}
         ORDER BY pub_year DESC, pmid DESC
-        """
+        """,
+        params,
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_journals(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT journal
+        FROM pubmed_records
+        WHERE journal != ''
+        ORDER BY journal COLLATE NOCASE
+        """
+    ).fetchall()
+    return [row[0] for row in rows]
