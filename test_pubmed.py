@@ -9,6 +9,8 @@ from pubmed import (
     count_records_by_year,
     count_top_journals,
     get_connection,
+    list_journals,
+    list_records,
     parse_pubmed_xml,
     save_records,
 )
@@ -120,6 +122,50 @@ class PubMedTests(unittest.TestCase):
             columns,
             {"pmid", "title", "abstract", "journal", "pub_year", "authors"},
         )
+        conn.close()
+
+    def test_list_records_filters_by_search_year_and_journal(self):
+        conn = get_connection(":memory:")
+        save_records(
+            conn,
+            [
+                PubMedRecord(
+                    "1",
+                    "CRISPR cancer therapy",
+                    "A genome editing study",
+                    "Journal A",
+                    2024,
+                    "Author One",
+                ),
+                PubMedRecord(
+                    "2",
+                    "Vaccine response",
+                    "Immune response in children",
+                    "Journal B",
+                    2025,
+                    "Author Two",
+                ),
+                PubMedRecord(
+                    "3",
+                    "Cancer screening",
+                    "Population health",
+                    "Journal A",
+                    2021,
+                    "Author Three",
+                ),
+            ],
+        )
+
+        records = list_records(
+            conn,
+            search_term="cancer",
+            start_year=2022,
+            end_year=2024,
+            journal="Journal A",
+        )
+
+        self.assertEqual([record["pmid"] for record in records], ["1"])
+        self.assertEqual(list_journals(conn), ["Journal A", "Journal B"])
         conn.close()
 
 

@@ -216,65 +216,56 @@ def save_records(
     return saved, duplicates
 
 
-def list_records(conn: sqlite3.Connection) -> list[dict[str, object]]:
+def list_records(
+    conn: sqlite3.Connection,
+    search_term: str = "",
+    start_year: int | None = None,
+    end_year: int | None = None,
+    journal: str = "",
+) -> list[dict[str, object]]:
     conn.row_factory = sqlite3.Row
+    filters: list[str] = []
+    params: list[object] = []
+
+    normalized_search = search_term.strip()
+    if normalized_search:
+        filters.append("(title LIKE ? OR abstract LIKE ?)")
+        search_pattern = f"%{normalized_search}%"
+        params.extend([search_pattern, search_pattern])
+
+    if start_year is not None:
+        filters.append("pub_year >= ?")
+        params.append(start_year)
+
+    if end_year is not None:
+        filters.append("pub_year <= ?")
+        params.append(end_year)
+
+    normalized_journal = journal.strip()
+    if normalized_journal:
+        filters.append("journal = ?")
+        params.append(normalized_journal)
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
     rows = conn.execute(
-        """
+        f"""
         SELECT pmid, title, abstract, journal, pub_year, authors
         FROM pubmed_records
+        {where_clause}
         ORDER BY pub_year DESC, pmid DESC
-        """
+        """,
+        params,
     ).fetchall()
     return [dict(row) for row in rows]
 
 
-def count_journals(conn: sqlite3.Connection) -> int:
-    row = conn.execute(
-        """
-        SELECT COUNT(DISTINCT journal)
-        FROM pubmed_records
-        WHERE TRIM(journal) != ''
-        """
-    ).fetchone()
-    return int(row[0])
-
-
-def count_records(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT COUNT(*) FROM pubmed_records").fetchone()
-    return int(row[0])
-
-
-def count_records_by_year(conn: sqlite3.Connection) -> list[dict[str, int]]:
+def list_journals(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute(
         """
-        SELECT pub_year, COUNT(*) AS paper_count
+        SELECT DISTINCT journal
         FROM pubmed_records
-        WHERE pub_year IS NOT NULL
-        GROUP BY pub_year
-        ORDER BY pub_year
+        WHERE journal != ''
+        ORDER BY journal COLLATE NOCASE
         """
     ).fetchall()
-    return [
-        {"pub_year": int(pub_year), "paper_count": int(paper_count)}
-        for pub_year, paper_count in rows
-    ]
-
-
-def count_top_journals(
-    conn: sqlite3.Connection, limit: int = 10
-) -> list[dict[str, str | int]]:
-    rows = conn.execute(
-        """
-        SELECT journal, COUNT(*) AS paper_count
-        FROM pubmed_records
-        WHERE TRIM(journal) != ''
-        GROUP BY journal
-        ORDER BY paper_count DESC, journal ASC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
-    return [
-        {"journal": str(journal), "paper_count": int(paper_count)}
-        for journal, paper_count in rows
-    ]
+    return [row[0] for row in rows]
