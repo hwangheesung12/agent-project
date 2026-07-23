@@ -5,3 +5,4 @@ __pycache__/
 .env
 pubmed.db
 pubmed.db-journal
+.chat_memory.json
