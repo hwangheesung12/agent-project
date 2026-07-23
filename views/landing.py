@@ -90,8 +90,10 @@ def render_landing(auth_ready: bool) -> None:
         div[data-testid="stButton"] > button {
             min-height: 3.7rem;
             border-radius: 22px !important;
-            font-size: 1rem;
-            font-weight: 900;
+            font-family: "Inter", "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif !important;
+            font-size: 0.98rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0 !important;
         }
         @media (max-width: 760px) {
             .landing-shell {

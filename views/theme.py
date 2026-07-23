@@ -12,6 +12,8 @@ def apply_clay_theme() -> None:
             --clay-primary: #7047eb;
             --clay-primary-dark: #5124c8;
             --clay-primary-soft: #a58af7;
+            --clay-button-text: #34245f;
+            --clay-button-primary-text: #ffffff;
             --clay-accent: #d8ccff;
             --clay-text: #272341;
             --clay-muted: #6c6983;
@@ -102,36 +104,93 @@ def apply_clay_theme() -> None:
         button[kind="primary"],
         button[kind="secondary"] {
             min-height: 3rem;
-            color: white !important;
-            background: linear-gradient(145deg, #8159ee, var(--clay-primary-dark)) !important;
+            color: var(--clay-button-text) !important;
+            background: linear-gradient(145deg, #ffffff, #ecefff) !important;
             border: 2px solid rgba(255, 255, 255, 0.64) !important;
             border-radius: var(--clay-radius-md) !important;
             box-shadow:
-                7px 9px 16px rgba(82, 55, 171, 0.33),
+                6px 7px 13px rgba(102, 110, 150, 0.2),
                 -6px -6px 13px rgba(255, 255, 255, 0.78),
-                inset 3px 3px 7px rgba(255, 255, 255, 0.28),
-                inset -4px -4px 9px rgba(55, 26, 145, 0.25) !important;
-            font-weight: 800 !important;
+                inset 3px 3px 7px rgba(255, 255, 255, 0.68),
+                inset -4px -4px 9px rgba(108, 118, 160, 0.12) !important;
+            font-family: "Inter", "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif !important;
+            font-size: 0.96rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0 !important;
+            line-height: 1.25 !important;
             transition: transform 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"],
+        div[data-testid="stDownloadButton"] > button[kind="primary"],
+        button[kind="primary"] {
+            color: var(--clay-button-primary-text) !important;
+            background: linear-gradient(145deg, #8f70f2, #6843d8) !important;
+            box-shadow:
+                6px 8px 14px rgba(82, 55, 171, 0.24),
+                -6px -6px 13px rgba(255, 255, 255, 0.78),
+                inset 3px 3px 7px rgba(255, 255, 255, 0.32),
+                inset -4px -4px 9px rgba(55, 26, 145, 0.18) !important;
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"] {
+            background: linear-gradient(145deg, #63b7c7, #347f9b) !important;
+            border-color: rgba(255, 255, 255, 0.72) !important;
+            box-shadow:
+                6px 8px 14px rgba(55, 117, 139, 0.24),
+                -6px -6px 13px rgba(255, 255, 255, 0.78),
+                inset 3px 3px 7px rgba(255, 255, 255, 0.34),
+                inset -4px -4px 9px rgba(27, 90, 111, 0.18) !important;
+        }
+
+        div[data-testid="stButton"] > button:disabled,
+        div[data-testid="stDownloadButton"] > button:disabled,
+        div[data-testid="stButton"] > button:disabled:hover,
+        div[data-testid="stDownloadButton"] > button:disabled:hover {
+            color: #77718f !important;
+            background: linear-gradient(145deg, #f4f5fb, #e5e9f7) !important;
+            box-shadow:
+                inset 3px 3px 7px rgba(119, 130, 173, 0.16),
+                inset -4px -4px 8px rgba(255, 255, 255, 0.72) !important;
+            opacity: 1 !important;
+            transform: none;
         }
 
         div[data-testid="stButton"] > button:hover,
         div[data-testid="stDownloadButton"] > button:hover {
             transform: translateY(-3px) scale(1.015);
             box-shadow:
-                11px 13px 20px rgba(102, 91, 180, 0.45),
+                9px 11px 18px rgba(102, 110, 150, 0.26),
+                -7px -7px 16px rgba(255, 255, 255, 0.86),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.7),
+                inset -5px -5px 11px rgba(108, 118, 160, 0.16) !important;
+        }
+
+        div[data-testid="stButton"] > button[kind="primary"]:hover,
+        div[data-testid="stDownloadButton"] > button[kind="primary"]:hover,
+        button[kind="primary"]:hover {
+            box-shadow:
+                9px 11px 18px rgba(82, 55, 171, 0.3),
                 -7px -7px 16px rgba(255, 255, 255, 0.86),
                 inset 4px 4px 8px rgba(255, 255, 255, 0.38),
-                inset -5px -5px 11px rgba(69, 53, 157, 0.38) !important;
+                inset -5px -5px 11px rgba(55, 26, 145, 0.22) !important;
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:hover {
+            box-shadow:
+                9px 11px 18px rgba(55, 117, 139, 0.3),
+                -7px -7px 16px rgba(255, 255, 255, 0.86),
+                inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+                inset -5px -5px 11px rgba(27, 90, 111, 0.22) !important;
         }
 
         div[data-testid="stButton"] > button:active,
         div[data-testid="stDownloadButton"] > button:active {
             transform: translateY(2px);
             box-shadow:
-                3px 3px 8px rgba(102, 91, 180, 0.36),
-                inset 6px 6px 12px rgba(69, 53, 157, 0.34),
-                inset -4px -4px 8px rgba(255, 255, 255, 0.24) !important;
+                3px 3px 8px rgba(102, 110, 150, 0.24),
+                inset 6px 6px 12px rgba(108, 118, 160, 0.2),
+                inset -4px -4px 8px rgba(255, 255, 255, 0.42) !important;
         }
 
         div[data-testid="stMetric"] {
