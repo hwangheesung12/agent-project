@@ -1,4 +1,6 @@
 from contextlib import closing
+from functools import lru_cache
+import os
 import re
 import sqlite3
 from typing import Any, Mapping
@@ -107,6 +109,20 @@ PERSONAL_ADVICE_PATTERNS = (
     "diagnose me",
     "should i",
     "what should i take",
+)
+MEDICAL_SAFETY_MODEL_ENV = "OPENAI_CHAT_MODEL"
+MEDICAL_SAFETY_DEFAULT_MODEL = "gpt-4o-mini"
+MEDICAL_SAFETY_SYSTEM_PROMPT = (
+    "You are a strict safety guardrail for a PubMed metadata analysis chatbot. "
+    "Classify the user's message.\n"
+    "Return only BLOCK or ALLOW.\n\n"
+    "BLOCK when the user asks for personal medical advice, diagnosis, "
+    "prescription, dosing, drug safety for themselves or another specific "
+    "person, treatment decisions, symptom triage, or whether an action is "
+    "medically okay.\n"
+    "ALLOW when the user asks about PubMed metadata, papers, journals, "
+    "research trends, app usage, or general literature analysis without "
+    "asking for personal medical decisions."
 )
 
 
@@ -290,10 +306,63 @@ def should_block_medical_advice(message: str) -> bool:
     )
 
 
-def medical_advice_middleware(message: str) -> str | None:
+@lru_cache(maxsize=1)
+def build_medical_safety_chain():
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_openai import ChatOpenAI
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", MEDICAL_SAFETY_SYSTEM_PROMPT),
+            ("human", "{message}"),
+        ]
+    )
+    model_name = os.getenv(
+        MEDICAL_SAFETY_MODEL_ENV,
+        MEDICAL_SAFETY_DEFAULT_MODEL,
+    ).strip()
+    llm = ChatOpenAI(
+        model=model_name or MEDICAL_SAFETY_DEFAULT_MODEL,
+        temperature=0,
+        timeout=8,
+        max_retries=1,
+    )
+    return prompt | llm | StrOutputParser()
+
+
+def classify_medical_advice_with_langchain_guardrail(message: str) -> bool | None:
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        return None
+
+    try:
+        classification = build_medical_safety_chain().invoke(
+            {"message": message}
+        )
+    except Exception:
+        return None
+
+    normalized = str(classification).strip().casefold()
+    if normalized.startswith("block"):
+        return True
+    if normalized.startswith("allow"):
+        return False
+    return None
+
+
+def medical_advice_guardrail(message: str) -> str | None:
     if should_block_medical_advice(message):
         return MEDICAL_REFUSAL_MESSAGE
+
+    langchain_decision = classify_medical_advice_with_langchain_guardrail(message)
+    if langchain_decision:
+        return MEDICAL_REFUSAL_MESSAGE
+
     return None
+
+
+def medical_advice_middleware(message: str) -> str | None:
+    return medical_advice_guardrail(message)
 
 
 def remember_user_details(message: str) -> None:
@@ -306,7 +375,7 @@ def remember_user_details(message: str) -> None:
 
 
 def generate_chatbot_reply(message: str) -> str:
-    blocked_reply = medical_advice_middleware(message)
+    blocked_reply = medical_advice_guardrail(message)
     if blocked_reply:
         return blocked_reply
 
