@@ -1,6 +1,8 @@
 from pathlib import Path
+import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from views.chat import (
     MEDICAL_REFUSAL_MESSAGE,
@@ -8,6 +10,7 @@ from views.chat import (
     default_chat_messages,
     generate_chatbot_reply,
     load_chat_memory,
+    medical_advice_guardrail,
     medical_advice_middleware,
     save_chat_memory,
     should_block_medical_advice,
@@ -18,34 +21,56 @@ class ChatTests(unittest.TestCase):
     def test_blocks_personal_medical_advice_question(self):
         question = "음주 후 타이레놀 먹어도 되나요?"
 
-        self.assertTrue(should_block_medical_advice(question))
-        self.assertEqual(
-            medical_advice_middleware(question),
-            MEDICAL_REFUSAL_MESSAGE,
-        )
-        self.assertEqual(
-            generate_chatbot_reply(question),
-            MEDICAL_REFUSAL_MESSAGE,
-        )
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertTrue(should_block_medical_advice(question))
+            self.assertEqual(
+                medical_advice_guardrail(question),
+                MEDICAL_REFUSAL_MESSAGE,
+            )
+            self.assertEqual(
+                medical_advice_middleware(question),
+                MEDICAL_REFUSAL_MESSAGE,
+            )
+            self.assertEqual(
+                generate_chatbot_reply(question),
+                MEDICAL_REFUSAL_MESSAGE,
+            )
 
     def test_blocks_short_slang_medical_advice_question(self):
         question = "오늘 술 먹었는데 타이레놀 ㄱㅊ?"
 
-        self.assertTrue(should_block_medical_advice(question))
-        self.assertEqual(
-            medical_advice_middleware(question),
-            MEDICAL_REFUSAL_MESSAGE,
-        )
-        self.assertEqual(
-            generate_chatbot_reply(question),
-            MEDICAL_REFUSAL_MESSAGE,
-        )
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertTrue(should_block_medical_advice(question))
+            self.assertEqual(
+                medical_advice_guardrail(question),
+                MEDICAL_REFUSAL_MESSAGE,
+            )
+            self.assertEqual(
+                generate_chatbot_reply(question),
+                MEDICAL_REFUSAL_MESSAGE,
+            )
 
     def test_allows_pubmed_metadata_question(self):
         question = "연도별 논문 추세는 어디서 확인하나요?"
 
-        self.assertFalse(should_block_medical_advice(question))
-        self.assertIn("연도별 논문 수", generate_chatbot_reply(question))
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertFalse(should_block_medical_advice(question))
+            self.assertIn("연도별 논문 수", generate_chatbot_reply(question))
+
+    def test_langchain_guardrail_blocks_model_classified_question(self):
+        class FakeSafetyChain:
+            def invoke(self, _payload):
+                return "BLOCK"
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+            with patch(
+                "views.chat.build_medical_safety_chain",
+                return_value=FakeSafetyChain(),
+            ):
+                self.assertEqual(
+                    medical_advice_guardrail("분류 모델 테스트용 문장"),
+                    MEDICAL_REFUSAL_MESSAGE,
+                )
 
     def test_google_account_identifier_prefers_subject(self):
         self.assertEqual(
