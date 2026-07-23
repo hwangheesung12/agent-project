@@ -131,16 +131,25 @@ Git 커밋 이력을 기준으로 주요 구현 영역을 정리했습니다.
 
 ## 구현 중 어려웠던 점
 
-> 이 섹션은 팀에서 직접 작성해 주세요.
+ - Streamlit에서 웹을 배포하는 전체 과정이 익숙하지 않았음.
+ - GitHub와 Streamlit Cloud가 어떤 방식으로 연결되는지 이해가 부족했음.
+ - 배포 중 installer returned a non-zero exit code 오류가 발생.
+   - 원인 : pywin32==312
+   - Windows에서는 설치되는 패키지지만 Streamlit Cloud에서는 Linux환경이라 설치가 불가능했다.
+   - requirements에서 pywin32삭제 후 해결.
+   - pip freeze를 그대로 사용하면 현재 PC의 환경이 모두 들어가기 때문에 배포 시에는 실제로 사용하는 라이브러리만 requirements에 넣는 것이 좋다.
 
-- **문제 상황:** <!-- 어떤 문제가 발생했는지 작성 -->
-  - 원인:
-  - 해결 과정:
-  - 결과:
-- **문제 상황:** <!-- 필요한 만큼 항목을 복사해서 작성 -->
-  - 원인:
-  - 해결 과정:
-  - 결과:
+- Secrets Key 이름
+  - clientsecret, clientid, cookiesecret로 작성해서 오류가 발생
+  - client_secret, client_id, cookie_secret로 수정 후 작동.
+  
+ - OAuth Redirect URL
+   - 발생 오류 : 400 redirect_uri_mismatch
+   - 원인 : Google Cloud에 등록된 주소와 Streamlit에서 보내는 주소가 달랐음.
+ - Git Push 오류
+   - 발생 오류 : fetch first non-fast-foward
+   - 원인 : 원격 저장소가 내 로컬보다 앞서 있었다.
+
 
 ## 설치 및 실행
 
