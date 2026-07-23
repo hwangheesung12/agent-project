@@ -2,3 +2,6 @@
 __pycache__/
 *.py[cod]
 .streamlit/
+.env
+pubmed.db
+pubmed.db-journal
