@@ -215,3 +215,25 @@ uv run streamlit run app.py
 ```powershell
 uv run python -m unittest discover -p "test_*.py"
 ```
+## 결과 사진
+
+
+## 🔐 로그인
+
+![로그인](./images/login.png)
+
+## 📸 메인 화면
+
+![메인 화면](./images/main.png)
+
+
+
+## 📄 논문 선택
+
+![논문 선택](./images/select.png)
+
+
+## 🤖 챗봇
+
+![챗봇](./images/chatbot.png)
+
