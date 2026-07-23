@@ -629,16 +629,41 @@ def render_chat(db_path: str) -> None:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
-        prompt = st.chat_input(
-            "\uc9c8\ubb38\uc744 \uc785\ub825\ud574 PubMed \ub370\uc774\ud130\uc5d0 \ub300\ud574 \ubb3c\uc5b4\ubcf4\uc138\uc694.",
-            disabled=not api_ready,
-        )
-        if prompt:
-            append_chat_message(db_path, user_id, "user", prompt)
+        with st.container(key="chat_input_area"):
+            with st.form(
+                "chat_prompt_form",
+                clear_on_submit=True,
+                border=False,
+            ):
+                prompt_col, submit_col = st.columns(
+                    [12, 1],
+                    gap="small",
+                    vertical_alignment="bottom",
+                )
+                with prompt_col:
+                    prompt = st.text_input(
+                        "메시지",
+                        placeholder=(
+                            "질문을 입력해 PubMed 데이터에 대해 물어보세요."
+                        ),
+                        disabled=not api_ready,
+                        label_visibility="collapsed",
+                    )
+                with submit_col:
+                    submitted = st.form_submit_button(
+                        "↑",
+                        help="전송",
+                        disabled=not api_ready,
+                        width="stretch",
+                    )
+
+        normalized_prompt = (prompt or "").strip()
+        if submitted and normalized_prompt:
+            append_chat_message(db_path, user_id, "user", normalized_prompt)
 
             try:
                 reply = generate_chatbot_reply(
-                    message=prompt,
+                    message=normalized_prompt,
                     api_key=api_key,
                     model_name=model_name,
                     chat_history=st.session_state[CHAT_HISTORY_KEY],

@@ -95,7 +95,20 @@ class DashboardTests(unittest.TestCase):
                 chat_history_blocks[0].proto.height_config.pixel_height,
                 520,
             )
-            self.assertTrue(app.chat_input[0].disabled)
+            chat_tab = next(tab for tab in app.tabs if tab.label == "채팅")
+            self.assertTrue(
+                chat_tab.children[1].proto.id.endswith(
+                    "-chat_history_scroll"
+                )
+            )
+            self.assertTrue(
+                chat_tab.children[2].proto.id.endswith("-chat_input_area")
+            )
+            self.assertEqual(len(app.chat_input), 0)
+            message_input = next(
+                item for item in app.text_input if item.label == "메시지"
+            )
+            self.assertTrue(message_input.disabled)
 
             charts = app.get("vega_lite_chart")
             self.assertEqual(len(charts), 2)

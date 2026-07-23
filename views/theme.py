@@ -140,6 +140,35 @@ def apply_clay_theme() -> None:
             border-radius: 10px;
         }
 
+        .st-key-chat_input_area {
+            position: relative;
+            z-index: 2;
+            margin-top: 0.35rem;
+        }
+
+        .st-key-chat_input_area [data-testid="stForm"] {
+            padding: 0.35rem 0.45rem;
+            background: rgba(255, 255, 255, 0.62);
+            border: 1px solid rgba(255, 255, 255, 0.84);
+            border-radius: 15px;
+            box-shadow:
+                4px 5px 12px rgba(104, 112, 156, 0.14),
+                inset 2px 2px 5px rgba(255, 255, 255, 0.72);
+        }
+
+        .st-key-chat_input_area [data-testid="stTextInputRootElement"] {
+            min-height: 2.8rem !important;
+            border-radius: 12px !important;
+        }
+
+        .st-key-chat_input_area [data-testid="stFormSubmitButton"] > button {
+            min-width: 2.8rem;
+            min-height: 2.8rem !important;
+            padding: 0 !important;
+            border-radius: 12px !important;
+            font-size: 1.25rem !important;
+        }
+
         h1, h2, h3 {
             color: var(--clay-text) !important;
             letter-spacing: -0.035em;
