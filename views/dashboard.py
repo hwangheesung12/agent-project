@@ -5,13 +5,22 @@ import os
 import streamlit as st
 
 from pubmed import PubMedClient, PubMedError, get_connection, save_records
-from views.chat import render_chat
+from views.chat import (
+    clear_openai_credentials,
+    render_chat,
+    render_openai_settings,
+)
 from views.overview import render_overview
 from views.papers import render_papers
 from views.theme import apply_clay_theme
 
 
 CURRENT_YEAR = date.today().year
+
+
+def logout_user() -> None:
+    clear_openai_credentials()
+    st.logout()
 
 
 def render_dashboard(db_path: str) -> None:
@@ -62,6 +71,17 @@ def render_dashboard(db_path: str) -> None:
         collect_clicked = st.button(
             "PubMed 수집", type="primary", width="stretch"
         )
+
+        st.divider()
+        render_openai_settings()
+
+        st.divider()
+        user_name = st.user.get("name", "사용자")
+        user_email = st.user.get("email", "")
+        st.caption(f"{user_name}님")
+        if user_email:
+            st.caption(user_email)
+        st.button("로그아웃", on_click=logout_user, width="stretch")
 
     if collect_clicked:
         if not keyword.strip():
