@@ -7,3 +7,6 @@ __pycache__/
 pubmed.db
 pubmed.db-journal
 .chat_memory.json
+test_chat.py
+test_dashboard.py
+test_pubmed.py

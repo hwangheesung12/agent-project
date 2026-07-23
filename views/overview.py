@@ -11,6 +11,8 @@ from pubmed import (
     get_connection,
 )
 
+CHART_HEIGHT = 330
+
 
 def render_overview(
     db_path: str,
@@ -23,7 +25,11 @@ def render_overview(
         papers_by_year = count_records_by_year(conn)
         top_journals = count_top_journals(conn)
 
-    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(
+        [1, 1, 1, 1],
+        gap="medium",
+        vertical_alignment="top",
+    )
     metric_col1.metric("전체 논문 수", total_papers)
     metric_col2.metric("신규 수집", stats["saved"])
     metric_col3.metric("중복 Skip", stats["duplicates"])
@@ -38,18 +44,13 @@ def render_overview(
     else:
         st.info("사이드바에서 검색 조건을 입력하고 PubMed 수집을 실행하세요.")
 
-    chart_col1, chart_col2 = st.columns(2)
+    chart_col1, chart_col2 = st.columns(2, gap="medium")
     with chart_col1:
         st.subheader("연도별 논문 수")
         if papers_by_year:
-            st.bar_chart(
-                papers_by_year,
-                x="pub_year",
-                y="paper_count",
-                x_label="출판 연도",
-                y_label="논문 수",
-                color="#287FB8",
-                height=420,
+            st.altair_chart(
+                _papers_by_year_chart(papers_by_year),
+                width="stretch",
             )
         else:
             st.info("출판 연도가 있는 논문 데이터가 없습니다.")
@@ -62,12 +63,65 @@ def render_overview(
             st.info("저널 정보가 있는 논문 데이터가 없습니다.")
 
 
+def _papers_by_year_chart(
+    papers_by_year: list[dict[str, int]],
+) -> alt.Chart:
+    return (
+        alt.Chart(alt.Data(values=papers_by_year))
+        .mark_bar(
+            color="#7047eb",
+            cornerRadiusTopLeft=5,
+            cornerRadiusTopRight=5,
+        )
+        .encode(
+            x=alt.X(
+                "pub_year:O",
+                title="출판 연도",
+                sort="ascending",
+                axis=alt.Axis(
+                    labelAngle=-35,
+                    labelPadding=8,
+                    ticks=False,
+                ),
+            ),
+            y=alt.Y(
+                "paper_count:Q",
+                title="논문 수",
+                scale=alt.Scale(zero=True, nice=True),
+                axis=alt.Axis(grid=True, tickMinStep=1, tickCount=7),
+            ),
+            tooltip=[
+                alt.Tooltip("pub_year:O", title="출판 연도"),
+                alt.Tooltip("paper_count:Q", title="논문 수"),
+            ],
+        )
+        .properties(width="container", height=CHART_HEIGHT)
+        .configure(background="transparent")
+        .configure_view(stroke=None)
+        .configure_axis(
+            domainColor="#77718f",
+            gridColor="#dddff0",
+            gridOpacity=0.8,
+            labelColor="#4b4760",
+            labelFontSize=11,
+            tickColor="#77718f",
+            titleColor="#343047",
+            titleFontSize=12,
+            titlePadding=12,
+        )
+    )
+
+
 def _top_journals_chart(
     top_journals: list[dict[str, str | int]],
 ) -> alt.Chart:
     return (
         alt.Chart(alt.Data(values=top_journals))
-        .mark_bar(color="#1f77b4", size=21)
+        .mark_bar(
+            color="#8061e8",
+            size=20,
+            cornerRadiusEnd=5,
+        )
         .encode(
             x=alt.X(
                 "paper_count:Q",
@@ -81,9 +135,9 @@ def _top_journals_chart(
                 sort=alt.EncodingSortField(field="paper_count", order="descending"),
                 axis=alt.Axis(
                     grid=False,
-                    labelLimit=185,
+                    labelLimit=155,
                     labelFontSize=10,
-                    labelPadding=6,
+                    labelPadding=8,
                     ticks=False,
                 ),
             ),
@@ -92,15 +146,17 @@ def _top_journals_chart(
                 alt.Tooltip("paper_count:Q", title="논문 수"),
             ],
         )
-        .properties(height=320)
-        .configure_view(stroke="#333333", strokeWidth=1)
+        .properties(width="container", height=CHART_HEIGHT)
+        .configure(background="transparent")
+        .configure_view(stroke=None)
         .configure_axis(
-            domainColor="#333333",
-            gridColor="#e6e6e6",
-            gridOpacity=1,
-            labelColor="#222222",
-            tickColor="#333333",
-            titleColor="#222222",
+            domainColor="#77718f",
+            gridColor="#dddff0",
+            gridOpacity=0.8,
+            labelColor="#4b4760",
+            tickColor="#77718f",
+            titleColor="#343047",
             titleFontSize=12,
+            titlePadding=12,
         )
     )

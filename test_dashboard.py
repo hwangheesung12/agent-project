@@ -22,6 +22,7 @@ class DashboardTests(unittest.TestCase):
 
         self.assertFalse(app.exception)
         self.assertTrue(any("메디톡톡" in item.value for item in app.markdown))
+        self.assertTrue(any("--clay-bg" in item.value for item in app.markdown))
         self.assertEqual([button.label for button in app.button], ["Google로 로그인"])
         self.assertEqual(len(app.tabs), 0)
         self.assertEqual(len(app.sidebar.text_input), 0)
@@ -46,6 +47,7 @@ class DashboardTests(unittest.TestCase):
             ).run(timeout=15)
 
             self.assertFalse(app.exception)
+            self.assertTrue(any("--clay-bg" in item.value for item in app.markdown))
             self.assertEqual(
                 [(metric.label, metric.value) for metric in app.metric],
                 [
@@ -70,10 +72,20 @@ class DashboardTests(unittest.TestCase):
 
             charts = app.get("vega_lite_chart")
             self.assertEqual(len(charts), 2)
+            year_chart_spec = json.loads(charts[0].proto.spec)
             journal_chart_spec = json.loads(charts[1].proto.spec)
+            self.assertEqual(year_chart_spec["height"], 330)
+            self.assertEqual(journal_chart_spec["height"], 330)
+            self.assertEqual(year_chart_spec["width"], "container")
+            self.assertEqual(journal_chart_spec["width"], "container")
             self.assertEqual(
                 journal_chart_spec["mark"],
-                {"type": "bar", "color": "#1f77b4", "size": 21},
+                {
+                    "type": "bar",
+                    "color": "#8061e8",
+                    "cornerRadiusEnd": 5,
+                    "size": 20,
+                },
             )
             self.assertEqual(journal_chart_spec["encoding"]["x"]["title"], "Count")
             self.assertEqual(
@@ -82,7 +94,7 @@ class DashboardTests(unittest.TestCase):
             )
             self.assertEqual(
                 journal_chart_spec["encoding"]["y"]["axis"]["labelLimit"],
-                185,
+                155,
             )
 
 

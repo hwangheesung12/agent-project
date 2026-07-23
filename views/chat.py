@@ -1,16 +1,17 @@
-import json
-import os
-from pathlib import Path
+from contextlib import closing
 import re
-from typing import Any
+import sqlite3
+from typing import Any, Mapping
 
 import streamlit as st
+
+from pubmed import get_connection
 
 
 CHAT_HISTORY_KEY = "chat_messages"
 USER_NAME_KEY = "chat_user_name"
-CHAT_MEMORY_LOADED_KEY = "chat_memory_loaded"
-CHAT_MEMORY_FILE = Path(os.getenv("PUBMED_CHAT_MEMORY_PATH", ".chat_memory.json"))
+CHAT_MEMORY_USER_KEY = "chat_memory_user_id"
+LOCAL_PREVIEW_USER_ID = "local-preview"
 
 MEDICAL_REFUSAL_MESSAGE = (
     "\uc774 \uc571\uc740 pubMed \uba54\ud0c0\ub370\uc774\ud130 \ubd84\uc11d\uc6a9\uc774\uba70, "
@@ -129,45 +130,135 @@ def sanitize_messages(messages: Any) -> list[dict[str, str]]:
     return sanitized or default_chat_messages()
 
 
-def load_chat_memory(memory_path: Path = CHAT_MEMORY_FILE) -> dict[str, Any]:
-    if not memory_path.exists():
-        return {"messages": default_chat_messages()}
+def build_chat_user_id(user_info: Mapping[str, Any]) -> str:
+    subject = str(user_info.get("sub") or "").strip()
+    if subject:
+        return f"google-sub:{subject}"
 
-    try:
-        with memory_path.open(encoding="utf-8") as memory_file:
-            saved_memory = json.load(memory_file)
-    except (OSError, json.JSONDecodeError):
-        return {"messages": default_chat_messages()}
+    email = str(user_info.get("email") or "").strip().casefold()
+    if email:
+        return f"google-email:{email}"
 
-    if not isinstance(saved_memory, dict):
-        return {"messages": default_chat_messages()}
+    return LOCAL_PREVIEW_USER_ID
 
+
+def current_chat_user_id() -> str:
+    return build_chat_user_id(st.user)
+
+
+def ensure_chat_tables(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS chat_users (
+            user_id TEXT PRIMARY KEY,
+            user_name TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES chat_users(user_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id_id
+        ON chat_messages(user_id, id);
+        """
+    )
+    conn.commit()
+
+
+def load_chat_memory(db_path: str, user_id: str) -> dict[str, Any]:
+    with closing(get_connection(db_path)) as conn:
+        ensure_chat_tables(conn)
+        profile = conn.execute(
+            "SELECT user_name FROM chat_users WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        rows = conn.execute(
+            """
+            SELECT role, content
+            FROM chat_messages
+            WHERE user_id = ?
+            ORDER BY id
+            """,
+            (user_id,),
+        ).fetchall()
+
+    messages = sanitize_messages(
+        [{"role": role, "content": content} for role, content in rows]
+    )
     return {
-        "messages": sanitize_messages(saved_memory.get("messages")),
-        "user_name": saved_memory.get("user_name"),
+        "messages": messages,
+        "user_name": profile[0] if profile else None,
     }
 
 
-def save_chat_memory(memory_path: Path = CHAT_MEMORY_FILE) -> None:
-    memory = {
-        "messages": st.session_state.get(CHAT_HISTORY_KEY, default_chat_messages()),
-        "user_name": st.session_state.get(USER_NAME_KEY),
-    }
+def save_chat_memory(
+    db_path: str,
+    user_id: str,
+    messages: list[dict[str, str]],
+    user_name: str | None = None,
+) -> None:
+    sanitized_messages = sanitize_messages(messages)
+    with closing(get_connection(db_path)) as conn:
+        ensure_chat_tables(conn)
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO chat_users (user_id, user_name, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    user_name = excluded.user_name,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, user_name),
+            )
+            conn.execute(
+                "DELETE FROM chat_messages WHERE user_id = ?",
+                (user_id,),
+            )
+            conn.executemany(
+                """
+                INSERT INTO chat_messages (user_id, role, content)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    (user_id, message["role"], message["content"])
+                    for message in sanitized_messages
+                ],
+            )
 
+
+def save_current_chat_memory(db_path: str, user_id: str) -> None:
     try:
-        with memory_path.open("w", encoding="utf-8") as memory_file:
-            json.dump(memory, memory_file, ensure_ascii=False, indent=2)
-    except OSError as exc:
-        st.warning(f"\ucc44\ud305 \ub0b4\uc5ed\uc744 \uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4: {exc}")
+        save_chat_memory(
+            db_path=db_path,
+            user_id=user_id,
+            messages=st.session_state.get(
+                CHAT_HISTORY_KEY,
+                default_chat_messages(),
+            ),
+            user_name=st.session_state.get(USER_NAME_KEY),
+        )
+    except (OSError, sqlite3.Error) as exc:
+        st.warning(f"채팅 내역을 저장하지 못했습니다: {exc}")
 
 
-def initialize_chat_state() -> None:
-    if not st.session_state.get(CHAT_MEMORY_LOADED_KEY):
-        saved_memory = load_chat_memory()
+def initialize_chat_state(db_path: str, user_id: str) -> None:
+    if st.session_state.get(CHAT_MEMORY_USER_KEY) != user_id:
+        saved_memory = load_chat_memory(db_path, user_id)
         st.session_state[CHAT_HISTORY_KEY] = saved_memory["messages"]
-        if isinstance(saved_memory.get("user_name"), str):
-            st.session_state[USER_NAME_KEY] = saved_memory["user_name"]
-        st.session_state[CHAT_MEMORY_LOADED_KEY] = True
+        saved_user_name = saved_memory.get("user_name")
+        if isinstance(saved_user_name, str) and saved_user_name:
+            st.session_state[USER_NAME_KEY] = saved_user_name
+        else:
+            st.session_state.pop(USER_NAME_KEY, None)
+        st.session_state[CHAT_MEMORY_USER_KEY] = user_id
 
     if CHAT_HISTORY_KEY not in st.session_state:
         st.session_state[CHAT_HISTORY_KEY] = default_chat_messages()
@@ -266,19 +357,24 @@ def generate_chatbot_reply(message: str) -> str:
     )
 
 
-def append_chat_message(role: str, content: str) -> None:
+def append_chat_message(
+    db_path: str,
+    user_id: str,
+    role: str,
+    content: str,
+) -> None:
     st.session_state[CHAT_HISTORY_KEY].append({"role": role, "content": content})
-    save_chat_memory()
+    save_current_chat_memory(db_path, user_id)
 
 
-def clear_chat_memory() -> None:
+def clear_chat_memory(db_path: str, user_id: str) -> None:
     st.session_state[CHAT_HISTORY_KEY] = default_chat_messages()
     st.session_state.pop(USER_NAME_KEY, None)
-    save_chat_memory()
+    save_current_chat_memory(db_path, user_id)
 
 
-def render_previous_chat_history() -> None:
-    saved_memory = load_chat_memory()
+def render_previous_chat_history(db_path: str, user_id: str) -> None:
+    saved_memory = load_chat_memory(db_path, user_id)
     saved_messages = saved_memory["messages"]
 
     if saved_messages == default_chat_messages():
@@ -290,8 +386,9 @@ def render_previous_chat_history() -> None:
             st.markdown(message["content"])
 
 
-def render_chat() -> None:
-    initialize_chat_state()
+def render_chat(db_path: str) -> None:
+    user_id = current_chat_user_id()
+    initialize_chat_state(db_path, user_id)
 
     chat_tab, previous_chat_tab = st.tabs(
         ["\ucc44\ud305", "\uc774\uc804 \ucc44\ud305"]
@@ -299,7 +396,7 @@ def render_chat() -> None:
 
     with chat_tab:
         if st.button("\ucc44\ud305 \ub0b4\uc5ed \ucd08\uae30\ud654"):
-            clear_chat_memory()
+            clear_chat_memory(db_path, user_id)
             st.rerun()
 
         for message in st.session_state[CHAT_HISTORY_KEY]:
@@ -308,14 +405,14 @@ def render_chat() -> None:
 
         prompt = st.chat_input("\uc9c8\ubb38\uc744 \uc785\ub825\ud574 PubMed \ub370\uc774\ud130\uc5d0 \ub300\ud574 \ubb3c\uc5b4\ubcf4\uc138\uc694.")
         if prompt:
-            append_chat_message("user", prompt)
+            append_chat_message(db_path, user_id, "user", prompt)
             with st.chat_message("user"):
                 st.markdown(prompt)
 
             reply = generate_chatbot_reply(prompt)
-            append_chat_message("assistant", reply)
+            append_chat_message(db_path, user_id, "assistant", reply)
             with st.chat_message("assistant"):
                 st.markdown(reply)
 
     with previous_chat_tab:
-        render_previous_chat_history()
+        render_previous_chat_history(db_path, user_id)
