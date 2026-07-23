@@ -16,6 +16,7 @@ from pubmed import get_connection
 CHAT_HISTORY_KEY = "chat_messages"
 USER_NAME_KEY = "chat_user_name"
 CHAT_MEMORY_USER_KEY = "chat_memory_user_id"
+CHAT_SCROLL_SIGNATURE_KEY = "chat_scroll_signature"
 LOCAL_PREVIEW_USER_ID = "local-preview"
 OPENAI_API_KEY_SESSION_KEY = "openai_api_key"
 OPENAI_API_KEY_INPUT_KEY = "openai_api_key_input"
@@ -620,14 +621,60 @@ def render_chat(db_path: str) -> None:
             clear_chat_memory(db_path, user_id)
             st.rerun()
 
+        messages = st.session_state[CHAT_HISTORY_KEY]
+        latest_message = messages[-1] if messages else {}
+        scroll_signature = (
+            user_id,
+            len(messages),
+            latest_message.get("role"),
+            latest_message.get("content"),
+        )
+        should_scroll_to_latest = (
+            st.session_state.get(CHAT_SCROLL_SIGNATURE_KEY)
+            != scroll_signature
+        )
+
         with st.container(
             height=520,
             border=False,
             key="chat_history_scroll",
         ):
-            for message in st.session_state[CHAT_HISTORY_KEY]:
+            for message in messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
+            if should_scroll_to_latest:
+                st.html(
+                    """
+                    <script>
+                    (() => {
+                        const scrollToLatest = () => {
+                            const root = document.querySelector(
+                                ".st-key-chat_history_scroll"
+                            );
+                            if (!root) return;
+
+                            [root, ...root.querySelectorAll("*")].forEach(
+                                (element) => {
+                                    if (
+                                        element.scrollHeight >
+                                        element.clientHeight
+                                    ) {
+                                        element.scrollTop =
+                                            element.scrollHeight;
+                                    }
+                                }
+                            );
+                        };
+
+                        requestAnimationFrame(scrollToLatest);
+                        setTimeout(scrollToLatest, 100);
+                        setTimeout(scrollToLatest, 300);
+                    })();
+                    </script>
+                    """,
+                    unsafe_allow_javascript=True,
+                )
+                st.session_state[CHAT_SCROLL_SIGNATURE_KEY] = scroll_signature
 
         with st.container(key="chat_input_area"):
             with st.form(
