@@ -1,10 +1,13 @@
 from contextlib import closing
-from functools import lru_cache
-import os
 import re
 import sqlite3
 from typing import Any, Mapping
 
+from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware, AgentState, hook_config
+from langchain.messages import AIMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+from langgraph.runtime import Runtime
 import streamlit as st
 
 from pubmed import get_connection
@@ -14,10 +17,32 @@ CHAT_HISTORY_KEY = "chat_messages"
 USER_NAME_KEY = "chat_user_name"
 CHAT_MEMORY_USER_KEY = "chat_memory_user_id"
 LOCAL_PREVIEW_USER_ID = "local-preview"
+OPENAI_API_KEY_SESSION_KEY = "openai_api_key"
+OPENAI_API_KEY_INPUT_KEY = "openai_api_key_input"
+OPENAI_API_KEY_CONFIRMED_KEY = "openai_api_key_confirmed"
+OPENAI_MODEL_SESSION_KEY = "openai_chat_model"
+OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+OPENAI_MODEL_OPTIONS = (
+    "gpt-4o-mini",
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "gpt-5.6-sol",
+)
+OPENAI_MODEL_LABELS = {
+    "gpt-4o-mini": "GPT-4o mini",
+    "gpt-5.6-luna": "GPT-5.6 Luna",
+    "gpt-5.6-terra": "GPT-5.6 Terra",
+    "gpt-5.6-sol": "GPT-5.6 Sol",
+}
+OPENAI_REQUEST_ERROR_MESSAGE = (
+    "OpenAI 응답을 생성하지 못했습니다. API 키와 선택한 모델의 접근 권한을 "
+    "확인해 주세요."
+)
 
 MEDICAL_REFUSAL_MESSAGE = (
-    "\uc774 \uc571\uc740 pubMed \uba54\ud0c0\ub370\uc774\ud130 \ubd84\uc11d\uc6a9\uc774\uba70, "
-    "\uac1c\uc778 \uc758\ub8cc \uc870\uc5b8, \uc9c4\ub2e8 \uad00\ub828 \uc9c8\ubb38\uc5d0\ub294 "
+    "\uc774 \uc571\uc740 PubMed \uba54\ud0c0\ub370\uc774\ud130 \ubd84\uc11d\uc6a9\uc774\uba70, "
+    "\uac1c\uc778 \uc758\ub8cc \uc870\uc5b8, \uc9c4\ub2e8, \ucc98\ubc29 \uad00\ub828 "
+    "\uc9c8\ubb38\uc5d0\ub294 "
     "\ub2f5\ubcc0\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \uc758\ub8cc \uad00\ub828 "
     "\uacb0\uc815\uc740 \uc758\ub8cc \uc804\ubb38\uac00\uc640 \uc0c1\ub2f4\ud574 \uc8fc\uc138\uc694."
 )
@@ -110,19 +135,14 @@ PERSONAL_ADVICE_PATTERNS = (
     "should i",
     "what should i take",
 )
-MEDICAL_SAFETY_MODEL_ENV = "OPENAI_CHAT_MODEL"
-MEDICAL_SAFETY_DEFAULT_MODEL = "gpt-4o-mini"
-MEDICAL_SAFETY_SYSTEM_PROMPT = (
-    "You are a strict safety guardrail for a PubMed metadata analysis chatbot. "
-    "Classify the user's message.\n"
-    "Return only BLOCK or ALLOW.\n\n"
-    "BLOCK when the user asks for personal medical advice, diagnosis, "
-    "prescription, dosing, drug safety for themselves or another specific "
-    "person, treatment decisions, symptom triage, or whether an action is "
-    "medically okay.\n"
-    "ALLOW when the user asks about PubMed metadata, papers, journals, "
-    "research trends, app usage, or general literature analysis without "
-    "asking for personal medical decisions."
+PUBMED_CHAT_SYSTEM_PROMPT = (
+    "You are the assistant for a Korean PubMed metadata analysis app. "
+    "Help users understand papers, journals, publication trends, keywords, "
+    "and how to use the app. Answer in Korean unless the user asks for "
+    "another language. Do not claim to have read data that is not present "
+    "in the conversation. Never provide personal medical advice, diagnosis, "
+    "or prescriptions. For those requests, respond with exactly this text: "
+    f"{MEDICAL_REFUSAL_MESSAGE}"
 )
 
 
@@ -306,63 +326,100 @@ def should_block_medical_advice(message: str) -> bool:
     )
 
 
-@lru_cache(maxsize=1)
-def build_medical_safety_chain():
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.prompts import ChatPromptTemplate
-    from langchain_openai import ChatOpenAI
+class MedicalAdviceMiddleware(AgentMiddleware):
+    """Block explicit personal medical advice before the model is called."""
 
-    prompt = ChatPromptTemplate.from_messages(
+    @hook_config(can_jump_to=["end"])
+    def before_agent(
+        self,
+        state: AgentState,
+        runtime: Runtime,
+    ) -> dict[str, Any] | None:
+        del runtime
+        for message in reversed(state["messages"]):
+            if isinstance(message, HumanMessage):
+                if should_block_medical_advice(str(message.content)):
+                    return {
+                        "messages": [AIMessage(content=MEDICAL_REFUSAL_MESSAGE)],
+                        "jump_to": "end",
+                    }
+                break
+        return None
+
+
+def build_openai_chat_model(api_key: str, model_name: str) -> ChatOpenAI:
+    model_options: dict[str, Any] = {
+        "model": model_name,
+        "api_key": api_key,
+        "timeout": 30,
+        "max_retries": 1,
+    }
+    if model_name.startswith("gpt-5.6-"):
+        model_options["reasoning_effort"] = "none"
+    else:
+        model_options["temperature"] = 0
+    return ChatOpenAI(**model_options)
+
+
+def build_pubmed_chat_agent(api_key: str, model_name: str):
+    llm = build_openai_chat_model(api_key, model_name)
+    return create_agent(
+        model=llm,
+        tools=[],
+        system_prompt=PUBMED_CHAT_SYSTEM_PROMPT,
+        middleware=[MedicalAdviceMiddleware()],
+        name="pubmed_chatbot",
+    )
+
+
+def validate_openai_credentials(api_key: str, model_name: str) -> None:
+    model = build_openai_chat_model(api_key, model_name)
+    model.invoke(
         [
-            ("system", MEDICAL_SAFETY_SYSTEM_PROMPT),
-            ("human", "{message}"),
+            HumanMessage(
+                content=(
+                    "Reply with only OK to confirm that this API key and model "
+                    "can generate a response."
+                )
+            )
         ]
     )
-    model_name = os.getenv(
-        MEDICAL_SAFETY_MODEL_ENV,
-        MEDICAL_SAFETY_DEFAULT_MODEL,
-    ).strip()
-    llm = ChatOpenAI(
-        model=model_name or MEDICAL_SAFETY_DEFAULT_MODEL,
-        temperature=0,
-        timeout=8,
-        max_retries=1,
-    )
-    return prompt | llm | StrOutputParser()
-
-
-def classify_medical_advice_with_langchain_guardrail(message: str) -> bool | None:
-    if not os.getenv("OPENAI_API_KEY", "").strip():
-        return None
-
-    try:
-        classification = build_medical_safety_chain().invoke(
-            {"message": message}
-        )
-    except Exception:
-        return None
-
-    normalized = str(classification).strip().casefold()
-    if normalized.startswith("block"):
-        return True
-    if normalized.startswith("allow"):
-        return False
-    return None
 
 
 def medical_advice_guardrail(message: str) -> str | None:
     if should_block_medical_advice(message):
         return MEDICAL_REFUSAL_MESSAGE
-
-    langchain_decision = classify_medical_advice_with_langchain_guardrail(message)
-    if langchain_decision:
-        return MEDICAL_REFUSAL_MESSAGE
-
     return None
 
 
-def medical_advice_middleware(message: str) -> str | None:
-    return medical_advice_guardrail(message)
+def _agent_messages(
+    message: str,
+    chat_history: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    history = sanitize_messages(chat_history) if chat_history else []
+    messages = [
+        item
+        for item in history[-20:]
+        if item["content"] != DEFAULT_ASSISTANT_MESSAGE
+    ]
+    if not messages or messages[-1] != {"role": "user", "content": message}:
+        messages.append({"role": "user", "content": message})
+    return messages
+
+
+def generate_openai_reply(
+    message: str,
+    api_key: str,
+    model_name: str,
+    chat_history: list[dict[str, str]] | None = None,
+) -> str:
+    result = build_pubmed_chat_agent(api_key, model_name).invoke(
+        {"messages": _agent_messages(message, chat_history)}
+    )
+    messages = result.get("messages", [])
+    if not messages:
+        raise RuntimeError("OpenAI agent returned no messages.")
+    return str(messages[-1].content).strip()
 
 
 def remember_user_details(message: str) -> None:
@@ -374,12 +431,25 @@ def remember_user_details(message: str) -> None:
         st.session_state[USER_NAME_KEY] = name_match.group(1)
 
 
-def generate_chatbot_reply(message: str) -> str:
+def generate_chatbot_reply(
+    message: str,
+    api_key: str | None = None,
+    model_name: str = OPENAI_DEFAULT_MODEL,
+    chat_history: list[dict[str, str]] | None = None,
+) -> str:
+    remember_user_details(message)
+    if api_key:
+        return generate_openai_reply(
+            message=message,
+            api_key=api_key,
+            model_name=model_name,
+            chat_history=chat_history,
+        )
+
     blocked_reply = medical_advice_guardrail(message)
     if blocked_reply:
         return blocked_reply
 
-    remember_user_details(message)
     normalized = message.casefold()
     user_name = st.session_state.get(USER_NAME_KEY)
 
@@ -455,9 +525,97 @@ def render_previous_chat_history(db_path: str, user_id: str) -> None:
             st.markdown(message["content"])
 
 
+def openai_is_confirmed() -> bool:
+    return bool(
+        st.session_state.get(OPENAI_API_KEY_CONFIRMED_KEY)
+        and st.session_state.get(OPENAI_API_KEY_SESSION_KEY)
+    )
+
+
+def clear_openai_credentials() -> None:
+    st.session_state.pop(OPENAI_API_KEY_SESSION_KEY, None)
+    st.session_state.pop(OPENAI_API_KEY_INPUT_KEY, None)
+    st.session_state.pop(OPENAI_API_KEY_CONFIRMED_KEY, None)
+
+
+def render_openai_settings() -> None:
+    st.divider()
+    st.subheader("OpenAI 설정")
+
+    if OPENAI_MODEL_SESSION_KEY not in st.session_state:
+        st.session_state[OPENAI_MODEL_SESSION_KEY] = OPENAI_DEFAULT_MODEL
+
+    st.segmented_control(
+        "모델 선택",
+        options=OPENAI_MODEL_OPTIONS,
+        format_func=lambda model: OPENAI_MODEL_LABELS[model],
+        selection_mode="single",
+        required=True,
+        key=OPENAI_MODEL_SESSION_KEY,
+        width="stretch",
+    )
+
+    if openai_is_confirmed():
+        st.session_state.pop(OPENAI_API_KEY_INPUT_KEY, None)
+        st.success("확인 완료")
+        st.caption(
+            "API 키는 현재 사용자 세션에만 보관되며 화면, 데이터베이스, "
+            "환경 파일에는 표시하거나 저장하지 않습니다."
+        )
+        if st.button("API 키 변경", key="change_openai_api_key"):
+            clear_openai_credentials()
+            st.rerun()
+        return
+
+    with st.form("openai_api_key_form"):
+        api_key = st.text_input(
+            "OpenAI API 키",
+            type="password",
+            key=OPENAI_API_KEY_INPUT_KEY,
+            placeholder="sk-...",
+            autocomplete="off",
+            help="입력한 키는 현재 사용자 세션에서만 사용합니다.",
+        )
+        submitted = st.form_submit_button(
+            "확인",
+            type="primary",
+            width="stretch",
+        )
+
+    if not submitted:
+        st.info("API 키를 확인하면 챗봇 입력창이 활성화됩니다.")
+        return
+
+    normalized_key = (api_key or "").strip()
+    if not normalized_key:
+        st.error("OpenAI API 키를 입력해 주세요.")
+        return
+
+    model_name = st.session_state[OPENAI_MODEL_SESSION_KEY]
+    try:
+        with st.spinner("API 키와 모델 접근 권한을 확인하고 있습니다..."):
+            validate_openai_credentials(normalized_key, model_name)
+    except Exception:
+        st.error(
+            "API 키를 확인하지 못했습니다. 키가 유효한지, 선택한 모델을 "
+            "사용할 수 있는지 확인해 주세요."
+        )
+        return
+
+    st.session_state[OPENAI_API_KEY_SESSION_KEY] = normalized_key
+    st.session_state[OPENAI_API_KEY_CONFIRMED_KEY] = True
+    st.rerun()
+
+
 def render_chat(db_path: str) -> None:
     user_id = current_chat_user_id()
     initialize_chat_state(db_path, user_id)
+    api_ready = openai_is_confirmed()
+    api_key = st.session_state.get(OPENAI_API_KEY_SESSION_KEY)
+    model_name = st.session_state.get(
+        OPENAI_MODEL_SESSION_KEY,
+        OPENAI_DEFAULT_MODEL,
+    )
 
     chat_tab, previous_chat_tab = st.tabs(
         ["\ucc44\ud305", "\uc774\uc804 \ucc44\ud305"]
@@ -472,16 +630,29 @@ def render_chat(db_path: str) -> None:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        prompt = st.chat_input("\uc9c8\ubb38\uc744 \uc785\ub825\ud574 PubMed \ub370\uc774\ud130\uc5d0 \ub300\ud574 \ubb3c\uc5b4\ubcf4\uc138\uc694.")
+        prompt = st.chat_input(
+            "\uc9c8\ubb38\uc744 \uc785\ub825\ud574 PubMed \ub370\uc774\ud130\uc5d0 \ub300\ud574 \ubb3c\uc5b4\ubcf4\uc138\uc694.",
+            disabled=not api_ready,
+        )
         if prompt:
             append_chat_message(db_path, user_id, "user", prompt)
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            reply = generate_chatbot_reply(prompt)
+            try:
+                reply = generate_chatbot_reply(
+                    message=prompt,
+                    api_key=api_key,
+                    model_name=model_name,
+                    chat_history=st.session_state[CHAT_HISTORY_KEY],
+                )
+            except Exception:
+                reply = OPENAI_REQUEST_ERROR_MESSAGE
             append_chat_message(db_path, user_id, "assistant", reply)
             with st.chat_message("assistant"):
                 st.markdown(reply)
 
     with previous_chat_tab:
         render_previous_chat_history(db_path, user_id)
+
+    render_openai_settings()

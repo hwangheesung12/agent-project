@@ -9,10 +9,11 @@ from streamlit.testing.v1 import AppTest
 from pubmed import PubMedRecord, get_connection, save_records
 
 
-def dashboard_test_app(db_path: str) -> None:
-    from views.dashboard import render_dashboard
+DASHBOARD_TEST_SCRIPT = """
+from views.dashboard import render_dashboard
 
-    render_dashboard(db_path)
+render_dashboard({db_path!r})
+"""
 
 
 class DashboardTests(unittest.TestCase):
@@ -40,9 +41,8 @@ class DashboardTests(unittest.TestCase):
                     ],
                 )
 
-            app = AppTest.from_function(
-                dashboard_test_app,
-                args=(db_path,),
+            app = AppTest.from_string(
+                DASHBOARD_TEST_SCRIPT.format(db_path=db_path),
                 default_timeout=15,
             ).run(timeout=15)
 
@@ -59,7 +59,12 @@ class DashboardTests(unittest.TestCase):
             )
             self.assertEqual(
                 [header.value for header in app.subheader],
-                ["연도별 논문 수", "상위 저널", "수집 논문 목록"],
+                [
+                    "연도별 논문 수",
+                    "상위 저널",
+                    "수집 논문 목록",
+                    "OpenAI 설정",
+                ],
             )
             self.assertEqual(
                 [selectbox.label for selectbox in app.selectbox],
