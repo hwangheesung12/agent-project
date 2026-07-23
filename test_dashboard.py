@@ -59,12 +59,7 @@ class DashboardTests(unittest.TestCase):
             )
             self.assertEqual(
                 [header.value for header in app.subheader],
-                [
-                    "연도별 논문 수",
-                    "상위 저널",
-                    "수집 논문 목록",
-                    "OpenAI 설정",
-                ],
+                ["연도별 논문 수", "상위 저널", "수집 논문 목록"],
             )
             self.assertEqual(
                 [selectbox.label for selectbox in app.selectbox],
@@ -74,6 +69,20 @@ class DashboardTests(unittest.TestCase):
                 [button.label for button in app.get("download_button")],
                 ["CSV 다운로드"],
             )
+            chat_history_blocks = [
+                block
+                for block in app.get("flex_container")
+                if any(
+                    getattr(child, "type", None) == "chat_message"
+                    for child in block.children.values()
+                )
+            ]
+            self.assertEqual(len(chat_history_blocks), 1)
+            self.assertEqual(
+                chat_history_blocks[0].proto.height_config.pixel_height,
+                520,
+            )
+            self.assertTrue(app.chat_input[0].disabled)
 
             charts = app.get("vega_lite_chart")
             self.assertEqual(len(charts), 2)

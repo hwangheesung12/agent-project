@@ -3,7 +3,7 @@ import os
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
-from views.chat import clear_openai_credentials
+from views.chat import clear_openai_credentials, render_openai_settings
 from views.dashboard import render_dashboard
 from views.landing import render_landing
 
@@ -67,6 +67,8 @@ if not is_logged_in:
     st.stop()
 
 with st.sidebar:
+    render_openai_settings()
+    st.divider()
     user_name = st.user.get("name", "사용자")
     user_email = st.user.get("email", "")
     st.caption(f"{user_name}님")

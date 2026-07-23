@@ -62,6 +62,84 @@ def apply_clay_theme() -> None:
                 inset 5px 0 12px rgba(255, 255, 255, 0.7);
         }
 
+        .st-key-openai_sidebar_settings {
+            margin-bottom: 0.35rem;
+            padding: 0.55rem 0.6rem 0.45rem;
+            background: rgba(255, 255, 255, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.78);
+            border-radius: 14px;
+            box-shadow:
+                4px 5px 10px rgba(104, 112, 156, 0.14),
+                inset 2px 2px 5px rgba(255, 255, 255, 0.72);
+        }
+
+        .st-key-openai_sidebar_settings [data-testid="stCaptionContainer"] {
+            margin-bottom: -0.35rem;
+        }
+
+        .st-key-openai_sidebar_settings [data-testid="stCaptionContainer"] p,
+        .st-key-openai_sidebar_settings label p {
+            font-size: 0.7rem !important;
+            line-height: 1.2 !important;
+        }
+
+        .st-key-openai_sidebar_settings [data-testid="stSelectbox"] {
+            margin-bottom: -0.35rem;
+        }
+
+        .st-key-openai_sidebar_settings [data-baseweb="select"] > div,
+        .st-key-openai_sidebar_settings [data-testid="stTextInputRootElement"] {
+            min-height: 2.15rem !important;
+            border-radius: 11px !important;
+        }
+
+        .st-key-openai_sidebar_settings input {
+            min-height: 2rem !important;
+            padding-block: 0.25rem !important;
+            font-size: 0.76rem !important;
+        }
+
+        .st-key-openai_sidebar_settings [data-testid="stForm"] {
+            margin-top: 0.15rem;
+            padding: 0.45rem;
+            border-radius: 12px;
+            box-shadow: none;
+        }
+
+        .st-key-openai_sidebar_settings div[data-testid="stButton"] > button,
+        .st-key-openai_sidebar_settings [data-testid="stFormSubmitButton"] > button {
+            min-height: 2.1rem !important;
+            padding: 0.3rem 0.65rem !important;
+            border-radius: 11px !important;
+            font-size: 0.75rem !important;
+        }
+
+        .st-key-openai_sidebar_settings [data-testid="stAlert"] {
+            padding: 0.35rem 0.5rem;
+            border-width: 1px;
+            border-radius: 11px;
+            box-shadow: none;
+            font-size: 0.74rem;
+        }
+
+        .st-key-chat_history_scroll {
+            margin-top: 0.25rem;
+            margin-bottom: 0.55rem;
+            padding: 0.35rem 0.55rem;
+            background: rgba(255, 255, 255, 0.48);
+            border: 1px solid rgba(255, 255, 255, 0.82);
+            border-radius: 16px;
+            box-shadow:
+                inset 3px 3px 8px rgba(111, 121, 162, 0.1),
+                inset -3px -3px 8px rgba(255, 255, 255, 0.72);
+        }
+
+        .st-key-chat_history_scroll [data-testid="stChatMessage"] {
+            margin-bottom: 0.45rem;
+            padding: 0.7rem 0.8rem;
+            border-radius: 10px;
+        }
+
         h1, h2, h3 {
             color: var(--clay-text) !important;
             letter-spacing: -0.035em;
