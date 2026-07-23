@@ -1,3 +1,4 @@
+from contextlib import closing
 from pathlib import Path
 import tempfile
 import unittest
@@ -6,16 +7,17 @@ from unittest.mock import patch
 from langchain.messages import AIMessage, HumanMessage
 from streamlit.testing.v1 import AppTest
 
+from pubmed import PubMedRecord, get_connection, save_records
 from views.chat import (
     MEDICAL_REFUSAL_MESSAGE,
     OPENAI_DEFAULT_MODEL,
     MedicalAdviceMiddleware,
     build_openai_chat_model,
     build_chat_user_id,
+    build_pubmed_database_tools,
     default_chat_messages,
     generate_chatbot_reply,
     load_chat_memory,
-    medical_advice_guardrail,
     save_chat_memory,
     should_block_medical_advice,
 )
@@ -45,10 +47,6 @@ class ChatTests(unittest.TestCase):
 
         self.assertTrue(should_block_medical_advice(question))
         self.assertEqual(
-            medical_advice_guardrail(question),
-            MEDICAL_REFUSAL_MESSAGE,
-        )
-        self.assertEqual(
             generate_chatbot_reply(question),
             MEDICAL_REFUSAL_MESSAGE,
         )
@@ -58,9 +56,14 @@ class ChatTests(unittest.TestCase):
 
         self.assertTrue(should_block_medical_advice(question))
         self.assertEqual(
-            medical_advice_guardrail(question),
+            generate_chatbot_reply(question),
             MEDICAL_REFUSAL_MESSAGE,
         )
+
+    def test_blocks_medical_advice_question_without_question_mark(self):
+        question = "타이레놀 먹어도 되나요"
+
+        self.assertTrue(should_block_medical_advice(question))
         self.assertEqual(
             generate_chatbot_reply(question),
             MEDICAL_REFUSAL_MESSAGE,
@@ -89,6 +92,62 @@ class ChatTests(unittest.TestCase):
 
         self.assertEqual(reply, "선택 모델 응답")
         build_agent.assert_called_once_with("sk-test", "gpt-5.6-luna")
+
+    def test_database_search_tool_returns_collected_paper_with_pmid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "papers.db")
+            with closing(get_connection(db_path)) as conn:
+                save_records(
+                    conn,
+                    [
+                        PubMedRecord(
+                            pmid="12345678",
+                            title="Deep learning for lung cancer detection",
+                            abstract="A neural network detects pulmonary nodules.",
+                            journal="Medical AI",
+                            pub_year=2025,
+                            authors="Kim; Lee",
+                        )
+                    ],
+                )
+
+            tools = {
+                database_tool.name: database_tool
+                for database_tool in build_pubmed_database_tools(db_path)
+            }
+            result = tools["search_collected_papers"].invoke(
+                {"search_query": "lung cancer", "limit": 3}
+            )
+
+        self.assertEqual(result["result_count"], 1)
+        self.assertEqual(result["papers"][0]["pmid"], "12345678")
+
+    def test_database_statistics_tool_reads_current_collection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "papers.db")
+            with closing(get_connection(db_path)) as conn:
+                save_records(
+                    conn,
+                    [
+                        PubMedRecord(
+                            pmid="42",
+                            title="A paper",
+                            abstract="An abstract",
+                            journal="Test Journal",
+                            pub_year=2024,
+                            authors="Researcher",
+                        )
+                    ],
+                )
+
+            tools = {
+                database_tool.name: database_tool
+                for database_tool in build_pubmed_database_tools(db_path)
+            }
+            result = tools["get_collection_statistics"].invoke({})
+
+        self.assertEqual(result["paper_count"], 1)
+        self.assertEqual(result["journal_count"], 1)
 
     def test_gpt_5_6_model_uses_none_reasoning(self):
         with patch("views.chat.ChatOpenAI") as chat_openai:
