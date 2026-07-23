@@ -1,4 +1,4 @@
-# *메디톡톡* ( https://meditalk.streamlit.app/ )
+# **메디톡톡** ( https://meditalk.streamlit.app/ )
 
 PubMed 논문을 수집하고 연도별 연구 동향과 상위 저널을 분석하는 Streamlit
 대시보드입니다. Google 로그인을 완료한 사용자만 대시보드에 접근할 수 있습니다.
