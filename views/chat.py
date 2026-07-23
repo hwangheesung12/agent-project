@@ -539,72 +539,66 @@ def clear_openai_credentials() -> None:
 
 
 def render_openai_settings() -> None:
-    st.divider()
-    st.subheader("OpenAI 설정")
+    with st.container(key="openai_sidebar_settings"):
+        st.caption("OpenAI 설정")
 
-    if OPENAI_MODEL_SESSION_KEY not in st.session_state:
-        st.session_state[OPENAI_MODEL_SESSION_KEY] = OPENAI_DEFAULT_MODEL
+        if OPENAI_MODEL_SESSION_KEY not in st.session_state:
+            st.session_state[OPENAI_MODEL_SESSION_KEY] = OPENAI_DEFAULT_MODEL
 
-    st.segmented_control(
-        "모델 선택",
-        options=OPENAI_MODEL_OPTIONS,
-        format_func=lambda model: OPENAI_MODEL_LABELS[model],
-        selection_mode="single",
-        required=True,
-        key=OPENAI_MODEL_SESSION_KEY,
-        width="stretch",
-    )
-
-    if openai_is_confirmed():
-        st.session_state.pop(OPENAI_API_KEY_INPUT_KEY, None)
-        st.success("확인 완료")
-        st.caption(
-            "API 키는 현재 사용자 세션에만 보관되며 화면, 데이터베이스, "
-            "환경 파일에는 표시하거나 저장하지 않습니다."
-        )
-        if st.button("API 키 변경", key="change_openai_api_key"):
-            clear_openai_credentials()
-            st.rerun()
-        return
-
-    with st.form("openai_api_key_form"):
-        api_key = st.text_input(
-            "OpenAI API 키",
-            type="password",
-            key=OPENAI_API_KEY_INPUT_KEY,
-            placeholder="sk-...",
-            autocomplete="off",
-            help="입력한 키는 현재 사용자 세션에서만 사용합니다.",
-        )
-        submitted = st.form_submit_button(
-            "확인",
-            type="primary",
-            width="stretch",
+        st.selectbox(
+            "모델",
+            options=OPENAI_MODEL_OPTIONS,
+            format_func=lambda model: OPENAI_MODEL_LABELS[model],
+            key=OPENAI_MODEL_SESSION_KEY,
         )
 
-    if not submitted:
-        st.info("API 키를 확인하면 챗봇 입력창이 활성화됩니다.")
-        return
+        if openai_is_confirmed():
+            st.session_state.pop(OPENAI_API_KEY_INPUT_KEY, None)
+            st.success("확인 완료")
+            if st.button(
+                "API 키 변경",
+                key="change_openai_api_key",
+                width="stretch",
+            ):
+                clear_openai_credentials()
+                st.rerun()
+            return
 
-    normalized_key = (api_key or "").strip()
-    if not normalized_key:
-        st.error("OpenAI API 키를 입력해 주세요.")
-        return
+        with st.form("openai_api_key_form"):
+            api_key = st.text_input(
+                "API 키",
+                type="password",
+                key=OPENAI_API_KEY_INPUT_KEY,
+                placeholder="sk-...",
+                autocomplete="off",
+                help="입력한 키는 현재 사용자 세션에서만 사용합니다.",
+            )
+            submitted = st.form_submit_button(
+                "확인",
+                type="primary",
+                width="stretch",
+            )
 
-    model_name = st.session_state[OPENAI_MODEL_SESSION_KEY]
-    try:
-        with st.spinner("API 키와 모델 접근 권한을 확인하고 있습니다..."):
-            validate_openai_credentials(normalized_key, model_name)
-    except Exception:
-        st.error(
-            "API 키를 확인하지 못했습니다. 키가 유효한지, 선택한 모델을 "
-            "사용할 수 있는지 확인해 주세요."
-        )
-        return
+        if not submitted:
+            st.caption("키 확인 후 챗봇이 활성화됩니다.")
+            return
 
-    st.session_state[OPENAI_API_KEY_SESSION_KEY] = normalized_key
-    st.session_state[OPENAI_API_KEY_CONFIRMED_KEY] = True
-    st.rerun()
+        normalized_key = (api_key or "").strip()
+        if not normalized_key:
+            st.error("OpenAI API 키를 입력해 주세요.")
+            return
+
+        model_name = st.session_state[OPENAI_MODEL_SESSION_KEY]
+        try:
+            with st.spinner("확인 중..."):
+                validate_openai_credentials(normalized_key, model_name)
+        except Exception:
+            st.error("API 키 또는 모델 접근 권한을 확인해 주세요.")
+            return
+
+        st.session_state[OPENAI_API_KEY_SESSION_KEY] = normalized_key
+        st.session_state[OPENAI_API_KEY_CONFIRMED_KEY] = True
+        st.rerun()
 
 
 def render_chat(db_path: str) -> None:
@@ -626,9 +620,14 @@ def render_chat(db_path: str) -> None:
             clear_chat_memory(db_path, user_id)
             st.rerun()
 
-        for message in st.session_state[CHAT_HISTORY_KEY]:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        with st.container(
+            height=520,
+            border=False,
+            key="chat_history_scroll",
+        ):
+            for message in st.session_state[CHAT_HISTORY_KEY]:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
 
         prompt = st.chat_input(
             "\uc9c8\ubb38\uc744 \uc785\ub825\ud574 PubMed \ub370\uc774\ud130\uc5d0 \ub300\ud574 \ubb3c\uc5b4\ubcf4\uc138\uc694.",
@@ -654,5 +653,3 @@ def render_chat(db_path: str) -> None:
 
     with previous_chat_tab:
         render_previous_chat_history(db_path, user_id)
-
-    render_openai_settings()

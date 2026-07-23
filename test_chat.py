@@ -22,9 +22,12 @@ from views.chat import (
 
 
 OPENAI_SETTINGS_TEST_SCRIPT = """
+import streamlit as st
+
 from views.chat import render_openai_settings
 
-render_openai_settings()
+with st.sidebar:
+    render_openai_settings()
 """
 
 
@@ -151,19 +154,22 @@ class ChatTests(unittest.TestCase):
         ).run()
 
         self.assertEqual(
-            [item.label for item in app.get("button_group")],
-            ["모델 선택"],
+            [item.label for item in app.sidebar.selectbox],
+            ["모델"],
         )
-        self.assertEqual([item.label for item in app.text_input], ["OpenAI API 키"])
+        self.assertEqual([item.label for item in app.sidebar.text_input], ["API 키"])
 
         with patch("views.chat.validate_openai_credentials") as validate:
-            app.text_input[0].input("sk-test")
-            app.button[0].click()
+            app.sidebar.text_input[0].input("sk-test")
+            app.sidebar.button[0].click()
             app.run()
 
         validate.assert_called_once_with("sk-test", OPENAI_DEFAULT_MODEL)
-        self.assertEqual([item.value for item in app.success], ["확인 완료"])
-        self.assertEqual(len(app.text_input), 0)
+        self.assertEqual(
+            [item.value for item in app.sidebar.success],
+            ["확인 완료"],
+        )
+        self.assertEqual(len(app.sidebar.text_input), 0)
 
     def test_google_account_identifier_prefers_subject(self):
         self.assertEqual(
