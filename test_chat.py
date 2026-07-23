@@ -75,6 +75,16 @@ class ChatTests(unittest.TestCase):
         self.assertFalse(should_block_medical_advice(question))
         self.assertIn("연도별 논문 수", generate_chatbot_reply(question))
 
+    def test_allows_medical_topic_paper_search(self):
+        self.assertFalse(
+            should_block_medical_advice("당뇨병 관련 논문을 찾아줘")
+        )
+        self.assertFalse(
+            should_block_medical_advice(
+                "고혈압 systematic review 논문이 있나요?"
+            )
+        )
+
     def test_configured_chat_uses_selected_key_and_model(self):
         class FakeChatAgent:
             def invoke(self, _payload):

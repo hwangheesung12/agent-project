@@ -1,4 +1,5 @@
 from contextlib import closing
+import os
 import re
 import sqlite3
 from typing import Any, Mapping
@@ -142,6 +143,30 @@ PERSONAL_ADVICE_PATTERNS = (
     "diagnose me",
     "should i",
     "what should i take",
+)
+RESEARCH_INTENT_TERMS = (
+    "논문",
+    "연구",
+    "문헌",
+    "초록",
+    "저널",
+    "출판",
+    "피인용",
+    "메타분석",
+    "체계적 문헌고찰",
+    "paper",
+    "papers",
+    "study",
+    "studies",
+    "research",
+    "literature",
+    "abstract",
+    "journal",
+    "publication",
+    "meta-analysis",
+    "systematic review",
+    "pubmed",
+    "pmid",
 )
 PUBMED_CHAT_SYSTEM_PROMPT = (
     "You are the assistant for a Korean PubMed metadata analysis app. "
@@ -334,6 +359,16 @@ def should_block_medical_advice(message: str) -> bool:
             "\uc784",
         )
     )
+    has_research_intent = any(
+        term in normalized for term in RESEARCH_INTENT_TERMS
+    )
+
+    # A medical topic is not itself a request for medical advice. Questions
+    # explicitly about papers or research must reach the PubMed database tools.
+    if has_research_intent and not (
+        asks_personal_advice or mentions_first_person
+    ):
+        return False
 
     return has_medical_context and (
         asks_personal_advice or mentions_first_person or asks_question
@@ -608,7 +643,30 @@ def clear_openai_credentials() -> None:
     st.session_state.pop(OPENAI_API_KEY_CONFIRMED_KEY, None)
 
 
+def load_openai_credentials_from_env() -> None:
+    if openai_is_confirmed():
+        return
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key or api_key.startswith("your_"):
+        return
+
+    configured_model = os.getenv(
+        "OPENAI_CHAT_MODEL",
+        OPENAI_DEFAULT_MODEL,
+    ).strip()
+    model_name = (
+        configured_model
+        if configured_model in OPENAI_MODEL_OPTIONS
+        else OPENAI_DEFAULT_MODEL
+    )
+    st.session_state[OPENAI_API_KEY_SESSION_KEY] = api_key
+    st.session_state[OPENAI_MODEL_SESSION_KEY] = model_name
+    st.session_state[OPENAI_API_KEY_CONFIRMED_KEY] = True
+
+
 def render_openai_settings() -> None:
+    load_openai_credentials_from_env()
     with st.container(key="openai_sidebar_settings"):
         st.caption("OpenAI 설정")
 
