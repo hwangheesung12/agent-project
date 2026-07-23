@@ -269,3 +269,55 @@ def list_journals(conn: sqlite3.Connection) -> list[str]:
         """
     ).fetchall()
     return [row[0] for row in rows]
+
+
+def count_journals(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        """
+        SELECT COUNT(DISTINCT journal)
+        FROM pubmed_records
+        WHERE TRIM(journal) != ''
+        """
+    ).fetchone()
+    return int(row[0])
+
+
+def count_records(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COUNT(*) FROM pubmed_records").fetchone()
+    return int(row[0])
+
+
+def count_records_by_year(conn: sqlite3.Connection) -> list[dict[str, int]]:
+    rows = conn.execute(
+        """
+        SELECT pub_year, COUNT(*) AS paper_count
+        FROM pubmed_records
+        WHERE pub_year IS NOT NULL
+        GROUP BY pub_year
+        ORDER BY pub_year
+        """
+    ).fetchall()
+    return [
+        {"pub_year": int(pub_year), "paper_count": int(paper_count)}
+        for pub_year, paper_count in rows
+    ]
+
+
+def count_top_journals(
+    conn: sqlite3.Connection, limit: int = 10
+) -> list[dict[str, str | int]]:
+    rows = conn.execute(
+        """
+        SELECT journal, COUNT(*) AS paper_count
+        FROM pubmed_records
+        WHERE TRIM(journal) != ''
+        GROUP BY journal
+        ORDER BY paper_count DESC, journal ASC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {"journal": str(journal), "paper_count": int(paper_count)}
+        for journal, paper_count in rows
+    ]

@@ -1,4 +1,5 @@
 from contextlib import closing
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -41,9 +42,33 @@ class DashboardTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     [header.value for header in app.subheader],
-                    ["연도별 논문 수", "상위 저널"],
+                    ["연도별 논문 수", "상위 저널", "수집 논문 목록"],
                 )
-                self.assertEqual(len(app.get("vega_lite_chart")), 2)
+                self.assertEqual(
+                    [selectbox.label for selectbox in app.selectbox],
+                    ["저널"],
+                )
+                self.assertEqual(
+                    [button.label for button in app.get("download_button")],
+                    ["CSV 다운로드"],
+                )
+                charts = app.get("vega_lite_chart")
+                self.assertEqual(len(charts), 2)
+
+                journal_chart_spec = json.loads(charts[1].proto.spec)
+                self.assertEqual(
+                    journal_chart_spec["mark"],
+                    {"type": "bar", "color": "#1f77b4", "size": 21},
+                )
+                self.assertEqual(journal_chart_spec["encoding"]["x"]["title"], "Count")
+                self.assertEqual(
+                    journal_chart_spec["encoding"]["y"]["sort"],
+                    {"field": "paper_count", "order": "descending"},
+                )
+                self.assertEqual(
+                    journal_chart_spec["encoding"]["y"]["axis"]["labelLimit"],
+                    185,
+                )
         finally:
             if previous_db_path is None:
                 os.environ.pop("PUBMED_DB_PATH", None)
